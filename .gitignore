@@ -12,3 +12,8 @@ venv/
 htmlcov/
 .env
 .DS_Store
+
+# Internal development material. Not shipped, not tracked.
+docs/
+benchmarks/
+vectors.npy

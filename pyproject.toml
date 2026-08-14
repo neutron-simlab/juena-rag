@@ -1,0 +1,44 @@
+[project]
+name = "juena-rag"
+version = "0.0.1"
+description = "Chunk schema, storage and retrieval for the JCNS knowledge base"
+readme = "README.md"
+requires-python = ">=3.11, <4.0"
+license = "MIT"
+authors = [
+    {name = "Ahmad Z. Ihsan", email = "a.ihsan@fz-juelich.de"}
+]
+keywords = ["rag", "vector-search", "pgvector", "neutron-scattering"]
+
+# Deliberately minimal. Anyone writing an ingestion pipeline needs the schema
+# and nothing else, so the database and web layers are extras.
+dependencies = [
+    "pydantic>=2.11.2,<3.0.0",
+]
+
+[project.optional-dependencies]
+# Talk to pgvector directly.
+store = [
+    "psycopg[binary,pool]==3.3.4",
+    "pgvector>=0.3.6",
+]
+# Run the HTTP service.
+serve = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/juena_rag"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

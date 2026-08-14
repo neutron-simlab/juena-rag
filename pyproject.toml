@@ -22,6 +22,18 @@ store = [
     "psycopg[binary,pool]==3.3.4",
     "pgvector>=0.3.6",
 ]
+# Talk to the embedding model: send text to it, and count tokens the way it
+# does. Its own extra rather than part of [store], because a store handed an
+# embedder needs no HTTP stack of its own.
+#
+# `tokenizers` is Hugging Face's Rust tokenizer -- a few megabytes, no
+# transformers and no PyTorch. Nothing in this package uses it; it is here for
+# whoever writes the chunks, so they can size them against the model's ceiling
+# instead of guessing.
+embed = [
+    "openai>=1.68.0",
+    "tokenizers>=0.20",
+]
 # Run the HTTP service.
 serve = [
     "fastapi>=0.104.0",
@@ -31,6 +43,10 @@ serve = [
 [dependency-groups]
 dev = [
     "pytest>=8.4.2",
+    # So the Blablador client is import-checked by the test run. A dev group is
+    # not part of the published package, so the base install stays pydantic-only.
+    "openai>=1.68.0",
+    "tokenizers>=0.20",
 ]
 
 [build-system]

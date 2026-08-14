@@ -104,13 +104,49 @@ Extras, so a pipeline author installs only what they need:
 | --- | --- |
 | `pip install juena-rag` | the schema alone — enough to write an ingestion pipeline |
 | `pip install juena-rag[store]` | pgvector access (psycopg, pgvector) |
+| `pip install juena-rag[embed]` | the Blablador embedding client (openai, tokenizers) |
 | `pip install juena-rag[serve]` | the HTTP service (FastAPI, uvicorn) |
+
+`[embed]` is separate from `[store]` on purpose: a store handed an embedder needs no
+network stack of its own. The `Embedder` protocol and its checks are in the base
+install; only the two things that reach outside — the HTTP client and the model's
+vocabulary — sit behind the extra.
+
+`BlabladorEmbedder.from_env()` reads these; only the first has no default:
+
+| Variable | Default |
+| --- | --- |
+| `BLABLADOR_API_KEY` | — |
+| `BLABLADOR_BASE_URL` | `https://api.helmholtz-blablador.fz-juelich.de/v1` |
+| `BLABLADOR_EMBEDDING_MODEL` | `alias-qwen3-8b-embeddings` |
+| `BLABLADOR_EMBEDDING_DIMENSION` | `4096` |
+| `BLABLADOR_EMBEDDING_MAX_INPUT_TOKENS` | `8192` |
+
+**Text arrives ready to embed.** The embedder sends what it is given, whole — there is no
+chunker in this package and there is not going to be one, because where a chunk should end
+depends on the format it came from and the format is exactly what this package does not
+know. Past `max_input_tokens` the model truncates and returns a normal-looking vector, so
+staying under it matters; it is the chunker's job, and `ModelTokenCounter` is here so the
+job is measurable rather than guessed at:
+
+```python
+embedder = BlabladorEmbedder.from_env()
+tokens = ModelTokenCounter()          # or ModelTokenCounter("path/to/tokenizer.json")
+
+counts = tokens.count_many([chunk.text for chunk in chunks])
+too_big = [c for c, n in zip(chunks, counts) if n > embedder.metadata.max_input_tokens]
+```
+
+Pass a local `tokenizer.json` in a container image; left unset the vocabulary is fetched
+from Hugging Face on first use and cached.
 
 ## Layout
 
 ```
 src/juena_rag/
 ├── schema/        the chunk schema -- the part other people code against
+├── embedding/     turning text into vectors; the parts that need a network
+│                  (the client, the vocabulary) are behind [embed]
 └── store/         storage backends, and the SQL schema in ddl.sql
 tests/
 ```

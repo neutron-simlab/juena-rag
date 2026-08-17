@@ -49,6 +49,11 @@ def database():
     with connection:
         # A test database is somewhere you have rights; a cluster is not, which is
         # the difference `apply_ddl(create_extension=...)` exists to express.
+        #
+        # `IF NOT EXISTS` is what makes this work as an ordinary user too: measured
+        # against a CloudNativePG cluster, an unprivileged account running this
+        # against an extension the operator already installed gets a NOTICE and
+        # success, not a permission error.
         try:
             connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
             connection.commit()

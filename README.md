@@ -91,9 +91,19 @@ Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone <this repo> && cd juena-rag
-uv sync                 # creates .venv, installs deps and the dev group
-uv run pytest           # once there are tests
+uv sync                     # creates .venv, installs deps and the dev group
+cp .env.example .env        # then set POSTGRES_PASSWORD, and a key if you want [embed]
+docker compose up -d        # PostgreSQL 18 with pgvector, on port 5433
+uv run pytest               # 155 tests
 ```
+
+The database is optional. Without it — on a plane, or with the container stopped —
+`uv run pytest` still runs 127 tests and skips the 28 that need one, because an
+unreachable `JUENA_RAG_TEST_DSN` is treated the same as an unset one. Each test works
+in its own throwaway schema and drops it afterwards.
+
+The container is a development database and nothing else; it is not the shape anything
+deploys in. See [`deploy/kube/`](deploy/kube/) for that.
 
 Add a dependency with `uv add <package>`; add a dev-only one with `uv add --dev`. Both
 update `pyproject.toml` and `uv.lock` together — commit the lockfile.
@@ -148,6 +158,9 @@ src/juena_rag/
 ├── embedding/     turning text into vectors; the parts that need a network
 │                  (the client, the vocabulary) are behind [embed]
 └── store/         storage backends, and the SQL schema in ddl.sql
+deploy/kube/       the deployed database: a CloudNativePG cluster,
+                   one base and a `vm` overlay for the single node
+docker-compose.yml the local one, for tests
 tests/
 ```
 
@@ -174,7 +187,10 @@ Two things to know before touching the schema:
 
 | | |
 | --- | --- |
-| Schema | drafted, under review |
-| pgvector store | not started — `store/ddl.sql` is the intended table |
+| Schema | built — models, registry, validation rules, 155 tests |
+| Embedder | built — Blablador client, token counting, dimension pinned at 4096 |
+| pgvector store | built — `Store` with a two-stage search and an atomic source replace |
+| Local database | built — `docker compose up -d` |
+| Deployed database | built — CloudNativePG, verified on a real cluster; the OpenShift arbitrary-UID question is still open |
 | HTTP service | not started |
 | Ingestion pipelines | out of scope by design; they live in their own repositories |

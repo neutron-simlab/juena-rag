@@ -1,0 +1,70 @@
+# A PostgreSQL with pgvector, for running the tests on a laptop.
+#
+#   cp .env.example .env          # once
+#   docker compose up -d
+#   uv run pytest                 # 155 tests; without the container, 127 and 28 skips
+#
+# This is a development database and nothing else. It publishes a port, keeps its
+# data in a volume you can delete, and is not the shape anything is deployed in --
+# the cluster runs CloudNativePG, which is a different file in a different plan.
+#
+# There is no service container here. juena-rag is a library; `juena-rag serve`
+# arrives with the HTTP service in plan 02, and this file grows a second service
+# then.
+
+services:
+  pgvector:
+    # Same major version as the cluster runs, on purpose. A PostgreSQL that differs
+    # between the laptop and the deployment is the kind of difference that surfaces
+    # as a bug nobody can reproduce.
+    image: pgvector/pgvector:pg18
+    container_name: juena-rag-pgvector
+
+    environment:
+      # `postgres` on purpose: the local connection really is superuser, which is
+      # what lets the test fixture run `CREATE EXTENSION vector`. On the cluster
+      # the operator does that once and the application account never can --
+      # the difference `apply_ddl(create_extension=...)` exists to express.
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-juena_rag}
+      # Required, with no default. `${VAR:-}` would supply an empty password
+      # silently and the container would fail to initialise minutes later; `:?`
+      # fails now, at `docker compose config` time, with this sentence.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
+
+    ports:
+      # Bound to loopback, not to every interface: this database has a weak
+      # password by design and does not belong on the office network. 5433 so it
+      # cannot collide with a PostgreSQL already installed on the machine.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+
+    # Measured, not copied. Building an HNSW index in parallel puts its workers'
+    # shared buffers here, and Docker's 64 MB default aborts the build on a real
+    # 4096-dimension corpus. The cluster needs no equivalent -- CloudNativePG
+    # mounts a memory-backed /dev/shm itself.
+    shm_size: 4gb
+
+    # Only the two settings an index build is actually sensitive to. Everything
+    # else is left at the image's defaults, which are fine for a laptop.
+    command:
+      - postgres
+      - -c
+      - maintenance_work_mem=1GB
+      - -c
+      - max_parallel_maintenance_workers=4
+
+    volumes:
+      # `/var/lib/postgresql`, not `/var/lib/postgresql/data`. PostgreSQL 18's
+      # image changed this and refuses to start on the old path: the data now
+      # lives in a subdirectory of the mount so that a future `pg_upgrade --link`
+      # is not trying to hard-link across a mount boundary.
+      - pgvector-data:/var/lib/postgresql
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-juena_rag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  pgvector-data:

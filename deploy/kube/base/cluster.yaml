@@ -1,0 +1,62 @@
+# The PostgreSQL that holds the corpus, run by the CloudNativePG operator.
+#
+# Deliberately our own instance rather than a schema inside an application's
+# database: vector search is a different load from chat traffic, and re-embedding
+# a corpus after losing it is hours of GPU time rather than a rebuild you shrug at.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: juena-rag-pg
+spec:
+  instances: 3
+
+  # `standard` rather than `minimal`, and that one word is the whole pgvector
+  # story: the standard operand image already contains pgvector, so there is no
+  # extension image to mount, no ImageVolume feature gate to enable, and no
+  # Kubernetes version floor beyond what the operator itself needs.
+  #
+  # The cost is that pgvector's version travels with PostgreSQL's -- upgrading one
+  # means bumping this tag. That is the trade, and it is the cheap side of it.
+  imageName: ghcr.io/cloudnative-pg/postgresql:18-standard-trixie
+
+  bootstrap:
+    initdb:
+      database: juena_rag
+      owner: juena_rag
+      # `CREATE EXTENSION` is deliberately *not* here. `postInitSQL` runs against
+      # the `postgres` database, `postInitTemplateSQL` against `template1`, and
+      # only `postInitApplicationSQL` against this one -- an easy thing to get
+      # wrong quietly. It is in database.yaml instead, where the operator
+      # reconciles it rather than running it once and forgetting.
+
+  storage:
+    size: 20Gi
+
+  postgresql:
+    parameters:
+      # Both are about building the HNSW index, which is the only operation here
+      # that is meaningfully expensive. The defaults (64 MB, 2 workers) turn a
+      # first ingest into a much longer one.
+      maintenance_work_mem: 1GB
+      max_parallel_maintenance_workers: "4"
+
+  # Parallel index builds put their workers' shared buffers in /dev/shm. The
+  # operator mounts a memory-backed volume there by itself -- unlike Docker, whose
+  # 64 MB default aborts the build -- and this only caps it.
+  #
+  # Half the memory limit, and the halving is the point: /dev/shm is memory-backed,
+  # so what it holds is charged to the container's memory cgroup. Setting it *equal*
+  # to the limit means an index build that fills it gets the pod OOM-killed rather
+  # than an out-of-shm error -- measured, after asking for 4Gi against a 2Gi limit
+  # and being quietly given 2Gi.
+  ephemeralVolumesSizeLimit:
+    shm: 2Gi
+
+  resources:
+    requests:
+      cpu: "500m"
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi

@@ -1,0 +1,8 @@
+# The shape both targets share. Neither target uses this directly -- pick an
+# overlay -- but everything true of both environments is written here once.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - cluster.yaml
+  - database.yaml

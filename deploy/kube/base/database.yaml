@@ -1,0 +1,25 @@
+# `CREATE EXTENSION vector`, as an object the operator keeps true rather than a
+# line that ran once during bootstrap.
+#
+# This is the difference worth understanding: a `postInit...SQL` entry runs at the
+# moment the cluster is first created and never again, so forgetting one -- or
+# adding an extension later -- leaves recreating the cluster or connecting by hand
+# as the only fixes. A Database resource is reconciled, so the extension is a thing
+# that is *declared to be present*, and adding a second one later is an edit here.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: juena-rag-db
+spec:
+  name: juena_rag
+  owner: juena_rag
+  cluster:
+    name: juena-rag-pg
+
+  # pgvector's control file does not say `trusted`, so this needs superuser --
+  # which the operator has and the application account never will. That split is
+  # exactly what `apply_ddl(create_extension=False)` expects on a cluster: the
+  # service checks that the extension is there, and is not the one to install it.
+  extensions:
+    - name: vector

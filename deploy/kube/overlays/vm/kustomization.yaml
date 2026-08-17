@@ -1,0 +1,36 @@
+# The single-node VM, and a laptop cluster, which have the same problem: three
+# replicas of a database on one machine is three copies of the same failure.
+#
+# Everything else -- the image, the extension, the index-build tuning -- comes from
+# the base unchanged. That is the point of the split: an overlay says what is
+# *different* about an environment, so anything not mentioned here is provably the
+# same in both.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Cluster
+      name: juena-rag-pg
+    patch: |
+      - op: replace
+        path: /spec/instances
+        value: 1
+      - op: replace
+        path: /spec/storage/size
+        value: 5Gi
+      - op: replace
+        path: /spec/resources/requests/memory
+        value: 1Gi
+      - op: replace
+        path: /spec/resources/limits/memory
+        value: 2Gi
+      # Halved with the memory limit, for the reason spelled out in the base:
+      # /dev/shm is charged to the container's memory cgroup, so it has to stay
+      # well under the limit or a large index build is an OOM kill.
+      - op: replace
+        path: /spec/ephemeralVolumesSizeLimit/shm
+        value: 1Gi

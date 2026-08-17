@@ -68,3 +68,30 @@ def database():
             connection.execute(f'DROP SCHEMA "{namespace}" CASCADE')
             connection.commit()
 
+
+@pytest.fixture
+def store(database):
+    """A `Store` on the same throwaway schema, with the table already applied.
+
+    The `Store` opens its own pool, so it cannot borrow the `database` fixture's
+    connection -- it gets the same namespace through a `search_path` in its own
+    connection string instead. Torn down before `database` drops the schema,
+    because a pool still holding connections would block the ``DROP``.
+    """
+    from psycopg.conninfo import make_conninfo
+
+    from juena_rag.store import apply_ddl
+    from juena_rag.store.pgvector import Store
+
+    from fakes import FakeEmbedder  # isort: skip -- tests/ is a flat import root
+
+    namespace = database.execute("SELECT current_schema()").fetchone()[0]
+    apply_ddl(database, dimension=8, create_extension=True)
+    database.commit()
+
+    dsn = make_conninfo(
+        os.environ["JUENA_RAG_TEST_DSN"],
+        options=f"-c search_path={namespace},public",
+    )
+    with Store(dsn, embedder=FakeEmbedder(dimension=8), k=20, n=5) as opened:
+        yield opened

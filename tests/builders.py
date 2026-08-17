@@ -12,6 +12,9 @@ def a_source(**overrides) -> SourceMetadata:
         "source_id": "kws1-manual",
         "category": "manual",
         "revision": "v3",
+        # Required on the model, so the builder has to state it too -- which is
+        # the point: no call site gets a permission it did not ask for.
+        "visibility": "internal",
     }
     return SourceMetadata(**{**defaults, **overrides})
 

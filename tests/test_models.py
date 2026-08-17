@@ -33,7 +33,9 @@ def test_artifact_uri_without_format_is_rejected():
 
 
 def test_code_sources_leave_every_artifact_field_unset():
-    source = SourceMetadata(source_id="juena", category="code", revision="a1b2c3d")
+    source = SourceMetadata(
+        source_id="juena", category="code", revision="a1b2c3d", visibility="internal"
+    )
 
     assert source.artifact_uri is None
     assert source.artifact_format is None
@@ -132,7 +134,6 @@ def test_a_plain_kind_must_not_carry_a_table(kind):
     assert f"chunk_kind={kind!r} must not set `table`" in str(exc.value)
 
 
-
 def test_a_whole_table_is_accepted():
     chunk = Chunk(
         text="Table 3: Calibration settings",
@@ -212,15 +213,6 @@ def test_a_table_chunk_without_a_table_is_rejected():
         Chunk(text="Table 3", chunk_kind="table")
 
     assert "chunk_kind='table' requires `table`" in str(exc.value)
-
-
-
-
-
-
-
-
-
 
 
 def test_an_equation_chunk_is_accepted():

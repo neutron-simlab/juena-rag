@@ -23,7 +23,10 @@ def test_the_end_to_end_example_from_the_plan_validates():
 
     batch = ChunkBatch(
         source=SourceMetadata(
-            source_id="my-notes", category="report", revision="2026-08"
+            source_id="my-notes",
+            category="report",
+            revision="2026-08",
+            visibility="internal",
         ),
         chunks=[Chunk(text=t) for t in my_texts],
     )
@@ -35,7 +38,12 @@ def test_the_end_to_end_example_from_the_plan_validates():
 def test_subclass_fields_survive_serialisation():
     """Without SerializeAsAny these vanish silently on the way to the database."""
     batch = ChunkBatch(
-        source=SourceMetadata(source_id="juena", category="code", revision="a1b2c3d"),
+        source=SourceMetadata(
+            source_id="juena",
+            category="code",
+            revision="a1b2c3d",
+            visibility="internal",
+        ),
         chunks=[CodeChunk(text="def build_index(): ...", symbol="build_index")],
     )
 
@@ -105,7 +113,10 @@ def test_a_category_specific_field_on_the_wrong_category_is_rejected():
     with pytest.raises(ValidationError) as exc:
         ChunkBatch(
             source=SourceMetadata(
-                source_id="juena", category="code", revision="a1b2c3d"
+                source_id="juena",
+                category="code",
+                revision="a1b2c3d",
+                visibility="internal",
             ),
             chunks=[{"text": "def f(): ...", "instrument": "KWS-1"}],
         )
@@ -117,7 +128,10 @@ def test_a_source_with_no_artifact_is_fine_when_nothing_points_into_one():
     """Pasted notes, a record from an API: the text *is* the original."""
     batch = ChunkBatch(
         source=SourceMetadata(
-            source_id="my-notes", category="report", revision="2026-08"
+            source_id="my-notes",
+            category="report",
+            revision="2026-08",
+            visibility="internal",
         ),
         chunks=[ReportChunk(text="Some notes I typed.")],
     )

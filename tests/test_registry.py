@@ -82,7 +82,10 @@ def test_a_subclass_defined_outside_the_package_validates(clean_registry):
 
     batch = ChunkBatch(
         source=SourceMetadata(
-            source_id="seminar-2026", category="seminar", revision="2026-08-14"
+            source_id="seminar-2026",
+            category="seminar",
+            revision="2026-08-14",
+            visibility="internal",
         ),
         chunks=[{"text": "Welcome everyone.", "speaker": "A. Ihsan"}],
     )
@@ -97,7 +100,10 @@ def test_an_unregistered_category_falls_back_to_plain_chunk():
 
     batch = ChunkBatch(
         source=SourceMetadata(
-            source_id="misc", category="no-such-category", revision="1"
+            source_id="misc",
+            category="no-such-category",
+            revision="1",
+            visibility="internal",
         ),
         chunks=[{"text": "Just some text."}],
     )

@@ -43,7 +43,11 @@ class SourceMetadata(BaseModel):
     revision: str = Field(min_length=1)
 
     title: str | None = None
-    visibility: Visibility = "internal"
+
+    #: Required, with no default. The closed vocabulary stops a typo; requiring it
+    #: stops the quieter failure, where nobody chose at all and a corpus acquires
+    #: its permissions from whatever this package happened to think was safe.
+    visibility: Visibility
 
     # The original file, for documents that have one. All four are unset for code
     # sources, and that is correct rather than incomplete.
@@ -309,3 +313,52 @@ class ChunkRow(BaseModel):
 
     embedding_model: str
     schema_version: int
+
+
+# --------------------------------------------------------------------------- #
+# What a search returns
+# --------------------------------------------------------------------------- #
+
+
+class SearchHit(ChunkRow):
+    """A stored chunk, and how far the query landed from it.
+
+    A subclass rather than a narrower copy, because a hit *is* a row -- the same
+    fields, read the same leniently, reconstructed into a typed chunk by the same
+    ``parse_chunk(hit.category, {…, **hit.extra})``. Only the distance is new.
+    """
+
+    #: Cosine distance, so **smaller is closer** -- 0 is identical and 2 is
+    #: opposite. Deliberately not called ``score``: it is the raw number the
+    #: database computed, and inverting it into a similarity would claim the
+    #: vectors are unit-length, which is the embedding model's business and not
+    #: something this package can check. The re-ranker in plan 03 adds its own
+    #: field beside this one rather than overwriting it.
+    distance: float
+
+
+class SearchResult(BaseModel):
+    """The hits, and the documents they came from.
+
+    Two lists rather than one, mirroring :class:`~juena_rag.schema.boundary.ChunkBatch`
+    on the write side: a handful of documents usually carry many hits, and the
+    navigator in plan 03 needs ``artifact_format`` and ``title``, which live on the
+    source. Join them with :meth:`source_of`.
+    """
+
+    sources: list[SourceRow] = Field(default_factory=list)
+    hits: list[SearchHit] = Field(default_factory=list)
+
+    def source_of(self, hit: SearchHit) -> SourceRow:
+        """The document one hit came from.
+
+        Linear over ``sources``, which holds one entry per *document* rather than
+        per hit -- single digits in every real call.
+        """
+        for source in self.sources:
+            if source.source_id == hit.source_id:
+                return source
+        raise KeyError(
+            f"no source {hit.source_id!r} in this result; a hit and its source "
+            "always travel together, so this means the two lists were built apart"
+        )

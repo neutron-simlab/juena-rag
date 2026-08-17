@@ -28,7 +28,11 @@ ChunkKind = Literal["text", "table", "equation", "code_block"]
 #: Listed explicitly rather than derived from ``Chunk.model_fields``: ``table``,
 #: ``equation``, ``heading_path`` and the line range are declared on ``Chunk`` and
 #: have no column, so deriving it would drop them silently.
-CHUNK_COLUMNS = frozenset({"text", "source_uri", "language", "chunk_kind"})
+#:
+#: ``category`` is here even though the base ``Chunk`` has no such field. Every
+#: registered subclass pins one, and it does have a column -- leaving it out stored
+#: the same string twice on every row.
+CHUNK_COLUMNS = frozenset({"text", "source_uri", "language", "chunk_kind", "category"})
 
 
 def derive_chunk_id(source_id: str, source_revision: str, chunk_index: int) -> str:

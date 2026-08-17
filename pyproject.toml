@@ -43,10 +43,16 @@ serve = [
 [dependency-groups]
 dev = [
     "pytest>=8.4.2",
-    # So the Blablador client is import-checked by the test run. A dev group is
-    # not part of the published package, so the base install stays pydantic-only.
+    # So the Blablador client and the store are import-checked by the test run. A
+    # dev group is not part of the published package, so the base install stays
+    # pydantic-only.
     "openai>=1.68.0",
     "tokenizers>=0.20",
+    "psycopg[binary,pool]==3.3.4",
+    "pgvector>=0.3.6",
+    # So `.env` is enough to run the tests that need a key or a database. Nothing
+    # in the package itself reads a file; only the test run does.
+    "python-dotenv>=1.0",
 ]
 
 [build-system]

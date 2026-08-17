@@ -402,7 +402,10 @@ store = [
 [package.dev-dependencies]
 dev = [
     { name = "openai" },
+    { name = "pgvector" },
+    { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pytest" },
+    { name = "python-dotenv" },
     { name = "tokenizers" },
 ]
 
@@ -421,7 +424,10 @@ provides-extras = ["store", "embed", "serve"]
 [package.metadata.requires-dev]
 dev = [
     { name = "openai", specifier = ">=1.68.0" },
+    { name = "pgvector", specifier = ">=0.3.6" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.4" },
     { name = "pytest", specifier = ">=8.4.2" },
+    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "tokenizers", specifier = ">=0.20" },
 ]
 

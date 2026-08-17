@@ -156,10 +156,9 @@ def test_the_ceiling_is_published_so_a_chunker_can_size_against_it():
 def test_text_over_the_ceiling_is_sent_as_it_is_rather_than_cut():
     """There is no chunker in this package, and this is what that means.
 
-    Shortening the text would make the stored vector's recall a permanent
-    ceiling, recoverable only by re-embedding; refusing would put a chunking
-    decision in a layer that cannot see the format. So it goes as given, and
-    staying under the limit is the job of whoever cut it.
+    Shortening would make the stored vector's recall a permanent ceiling and
+    refusing would put a chunking decision in a layer that cannot see the format,
+    so it goes as given. Staying under the limit is the job of whoever cut it.
     """
     embedder, stub = build(max_input_tokens=10)
     long_text = "a text far longer than ten tokens, whatever a token is here"
@@ -393,10 +392,9 @@ def test_counting_characters_would_be_wrong_in_both_directions(qwen_tokens):
     """Why this ships a vocabulary rather than a rule of thumb.
 
     English prose costs far fewer tokens than characters, so a character count
-    over-states it -- wasteful but harmless. Multi-byte text costs *more* tokens
-    than characters, because tokens are built out of bytes, and that is the
-    harmful direction: a chunker trusting the "conservative" estimate walks past
-    the ceiling and the server truncates without saying so.
+    over-states it -- wasteful but harmless. Multi-byte text costs *more*, which
+    is the harmful direction: the "conservative" estimate walks past the ceiling
+    and the server truncates without saying so.
     """
     english, japanese = "small-angle neutron scattering", "中性子小角散乱"
     counts = qwen_tokens.count_many([english, japanese])

@@ -168,15 +168,27 @@ class Store:
 
         with self._pool.connection() as connection, connection.transaction():
             _upsert_source(connection, batch.source)
+            # Every chunk of the source goes, before the new ones arrive -- not
+            # just the other revisions, and not after the insert.
+            #
+            # `chunk_id` hashes (source_id, revision, chunk_index), so re-running
+            # this at an *unchanged* revision produces exactly the ids already
+            # stored. Deleting `source_revision <> revision` afterwards spared
+            # them, and the insert collided on the primary key: "replace" failed
+            # on the one input it should have been most able to handle. Deleting
+            # first, unconditionally, also drops rows past the end when a source
+            # gets shorter -- which conflict-update alone would have left behind.
+            #
+            # Still atomic. The delete and the insert are one transaction, so a
+            # concurrent reader sees the previous content until it commits.
+            connection.execute(
+                "DELETE FROM chunks WHERE source_id = %s", (batch.source.source_id,)
+            )
             _insert_chunks(connection, rows)
             connection.execute(
                 "UPDATE sources SET active_revision = %s, updated_at = now() "
                 "WHERE source_id = %s",
                 (revision, batch.source.source_id),
-            )
-            connection.execute(
-                "DELETE FROM chunks WHERE source_id = %s AND source_revision <> %s",
-                (batch.source.source_id, revision),
             )
         self._analyze()
         return revision

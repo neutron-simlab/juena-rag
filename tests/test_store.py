@@ -257,6 +257,34 @@ def test_replacing_a_source_leaves_exactly_the_new_revision(store):
     assert store.status().chunks == 1
 
 
+def test_replacing_a_source_at_the_same_revision_works(store):
+    """Found by the first real ingest, which is later than it should have been.
+
+    `chunk_id` hashes the revision, so re-running at an unchanged one rebuilds the
+    ids already stored -- and the old delete spared exactly those rows, leaving the
+    insert to collide on the primary key.
+    """
+    store.replace_source(a_batch("first go", revision="v1"))
+    store.replace_source(a_batch("chunked differently", revision="v1"))
+
+    result = store.search("chunked", visibility=["internal"])
+
+    assert [hit.text for hit in result.hits] == ["chunked differently"]
+    assert store.status().chunks == 1
+
+
+def test_replacing_a_source_with_fewer_chunks_leaves_none_behind(store):
+    """The other half of the same bug: a source that gets shorter.
+
+    Overwriting on conflict would have fixed the collision above and still left
+    rows 1 and 2 here, since nothing in the new batch has their ids.
+    """
+    store.replace_source(a_batch("one", "two", "three", revision="v1"))
+    store.replace_source(a_batch("only this", revision="v2"))
+
+    assert store.status().chunks == 1
+
+
 def test_a_reader_never_sees_a_half_replaced_source(store):
     """The guarantee the whole pgvector migration was chosen for.
 

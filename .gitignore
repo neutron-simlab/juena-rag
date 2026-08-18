@@ -13,6 +13,10 @@ htmlcov/
 .env
 .DS_Store
 
+# Cloned repositories, written by the pipelines in use-cases/. Hundreds of
+# megabytes, and reproducible from repositories.yaml.
+data/
+
 # Internal development material. Not shipped, not tracked.
 docs/
 benchmarks/

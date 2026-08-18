@@ -1,0 +1,186 @@
+"""What a file turns into: chunk kinds, line ranges, and the enclosing symbol.
+
+Nothing here embeds anything. The chunkers are deterministic, so these assert what
+lands on a `CodeChunk` rather than where exactly a boundary fell -- boundary
+choices belong to chonkie and langchain, which are not this pipeline's to test.
+"""
+
+import pytest
+
+pytest.importorskip("chonkie", reason="needs the `use-cases` dependency group")
+
+from chunking import (  # imported below the skip, deliberately
+    chunk_file,
+    detect_language,
+    line_of,
+    python_symbols,
+    symbol_at,
+)
+
+SOURCE = '''"""A module."""
+
+
+def scattering_length(element):
+    """Look one up."""
+    return TABLE[element]
+
+
+class FormFactor:
+    """A shape."""
+
+    def sphere(self, q, radius):
+        return 3 * (sin(q * radius) - q * radius * cos(q * radius))
+'''
+
+
+# --------------------------------------------------------------------------- #
+# Language and kind
+# --------------------------------------------------------------------------- #
+
+
+def test_the_extension_decides_the_language():
+    assert detect_language("src/jscatter/formel.py") == "python"
+    assert detect_language("doc/source/sas.rst") == "rst"
+    assert detect_language("Makefile") == "other"
+
+
+def test_source_chunks_are_code_and_prose_chunks_are_text():
+    """`chunk_kind` asks what the text *is*, not where the file lives.
+
+    The partial index `chunks_kind_idx` covers everything that is not `"text"`, so
+    marking prose as code would put the whole documentation tree in it for nothing.
+    """
+    code = chunk_file(SOURCE, "src/jscatter/formel.py")
+    prose = chunk_file("Some heading\n============\n\nWords.\n", "doc/sas.rst")
+
+    assert {chunk.chunk_kind for chunk in code} == {"code_block"}
+    assert {chunk.chunk_kind for chunk in prose} == {"text"}
+
+
+def test_is_doc_is_carried_from_the_caller_not_guessed():
+    chunks = chunk_file(SOURCE, "src/jscatter/formel.py", is_doc=True)
+    assert all(chunk.is_doc for chunk in chunks)
+
+
+# --------------------------------------------------------------------------- #
+# Symbols
+# --------------------------------------------------------------------------- #
+
+
+def test_symbols_are_found_in_source_order_with_dotted_names():
+    assert python_symbols(SOURCE) == [
+        (4, 6, "scattering_length"),
+        (9, 13, "FormFactor"),
+        (12, 13, "FormFactor.sphere"),
+    ]
+
+
+def test_the_innermost_definition_wins():
+    """A method's lines are also its class's lines; the method is the useful answer."""
+    symbols = python_symbols(SOURCE)
+    assert symbol_at(symbols, 13) == "FormFactor.sphere"
+    assert symbol_at(symbols, 10) == "FormFactor"
+    assert symbol_at(symbols, 1) is None
+
+
+def test_a_file_that_does_not_parse_yields_no_symbols_rather_than_raising():
+    """One unparseable file of two hundred should cost that file, not the ingest."""
+    assert python_symbols("def broken(:\n    pass\n") == []
+
+
+def test_a_chunk_is_named_for_the_definition_it_starts_in():
+    """Small `chunk_size` on purpose, so the file splits and a chunk starts inside.
+
+    A whole short file is one chunk starting at line 1, which is outside every
+    definition -- see the test below, which is the more common case.
+    """
+    body = "\n".join(f"    value_{n} = {n}" for n in range(200))
+    chunks = chunk_file(f"def huge():\n{body}\n", "formel.py", chunk_size=400)
+
+    named = {chunk.symbol for chunk in chunks if chunk.symbol}
+    assert named == {"huge"}
+
+
+def test_a_chunk_starting_above_the_first_definition_has_no_symbol():
+    """Worth knowing before reading the field: most chunks will have none.
+
+    At `chunk_size=1500` a short module is one chunk beginning at its imports, and
+    `symbol` earns its place only on files with definitions longer than a chunk.
+    """
+    chunks = chunk_file(SOURCE, "formel.py")
+    assert len(chunks) == 1
+    assert chunks[0].symbol is None
+
+
+def test_only_python_is_asked_for_symbols():
+    chunks = chunk_file("Heading\n=======\n\ndef looks_like_python():\n", "a.rst")
+    assert all(chunk.symbol is None for chunk in chunks)
+
+
+# --------------------------------------------------------------------------- #
+# Offsets and lines
+# --------------------------------------------------------------------------- #
+
+
+def test_line_numbers_start_at_one():
+    assert line_of("a\nb\nc", 0) == 1
+    assert line_of("a\nb\nc", 2) == 2
+
+
+def test_a_chunk_ending_in_a_newline_does_not_claim_the_next_line():
+    """`end_index` points one past the last character, so this is off by one easily."""
+    chunks = chunk_file("alpha\nbeta\n", "a.txt", chunk_size=100, chunk_overlap=0)
+    assert len(chunks) == 1
+    assert (chunks[0].start_line, chunks[0].end_line) == (1, 2)
+
+
+def test_an_overlap_wider_than_the_chunk_is_clamped_rather_than_raising():
+    """1500/200 is a sensible config and 100/200 is not, but only one is written down.
+
+    The splitter refuses the second outright, which would turn a `--limit` smoke
+    test with a small chunk size into a crash.
+    """
+    chunks = chunk_file(
+        "alpha\nbeta\ngamma\n", "a.txt", chunk_size=8, chunk_overlap=200
+    )
+    assert chunks
+
+
+def test_the_offsets_point_back_at_the_text_they_came_from():
+    """The whole reason `add_start_index` is on: searching for the text can't work."""
+    chunks = chunk_file(SOURCE, "formel.py")
+    for chunk in chunks:
+        assert SOURCE[chunk.start_index : chunk.end_index] == chunk.text
+
+
+def test_every_chunk_covers_lines_in_order():
+    for chunk in chunk_file(SOURCE, "formel.py"):
+        assert chunk.start_line <= chunk.end_line
+
+
+# --------------------------------------------------------------------------- #
+# What must never reach the store
+# --------------------------------------------------------------------------- #
+
+
+def test_a_whitespace_only_chunk_is_dropped_rather_than_rejected_later():
+    """`Chunk` refuses blank text, so a run of empty lines would fail the batch.
+
+    The chatbot never validated, so it never noticed; here it would stop an ingest
+    of two thousand chunks over one of them.
+    """
+    chunks = chunk_file("code = 1\n" + "\n" * 400 + "more = 2\n", "a.py", chunk_size=50)
+    assert chunks
+    assert all(chunk.text.strip() for chunk in chunks)
+
+
+def test_a_file_with_nothing_in_it_yields_nothing():
+    assert chunk_file("\n\n   \n", "empty.py") == []
+
+
+def test_an_oversized_unit_is_split_rather_than_passed_through():
+    """A parser keeps a function whole however small `chunk_size` is."""
+    body = "\n".join(f"    value_{n} = {n}" for n in range(400))
+    chunks = chunk_file(f"def huge():\n{body}\n", "a.py", chunk_size=500)
+    assert len(chunks) > 1
+    assert all(len(chunk.text) <= 500 for chunk in chunks)

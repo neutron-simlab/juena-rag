@@ -1,0 +1,46 @@
+# Which repositories this pipeline can ingest, and how to treat their files.
+#
+# Adding one is a block here, not new Python. The field names match the chatbot's
+# `config/repositories.yaml`, so an entry can be copied between the two unchanged.
+#
+#   id             the source_id in the database -- change it and you have a second source
+#   source.url     where to clone from
+#   source.branch  which branch to track
+#   include_globs  which files to index; `**/` means zero or more directories
+#   exclude_globs  which to skip -- exclusions win over inclusions
+#   max_file_bytes skip anything larger, in bytes
+#   chunk_size     characters per chunk (not tokens)
+#   chunk_overlap  characters repeated between neighbouring chunks
+#   docs_paths     a file, or a directory prefix, whose chunks are marked is_doc
+
+repositories:
+
+  - id: jscatter
+    name: jscatter
+    description: "Python software for X-ray and neutron scattering analysis, fitting, and plotting."
+    source:
+      url: https://gitlab.com/biehl/jscatter.git
+      branch: main
+    include_globs:
+      - "**/*.py"
+      - "**/*.md"
+      - "**/*.rst"
+      - "**/*.txt"
+    exclude_globs:
+      - "**/node_modules/**"
+      - "**/.git/**"
+      - "**/__pycache__/**"
+      - "**/.venv/**"
+      - "**/dist/**"
+      - "**/build/**"
+    max_file_bytes: 524288          # 512 kB
+    chunk_size: 1500
+    chunk_overlap: 200
+    # Corrected against the actual repository. The chatbot's config says
+    # `README.md` and `docs/`, and jscatter has neither -- its readme is
+    # `README.rst` and its documentation is under `src/jscatter/doc/`. Nothing
+    # failed there; every chunk simply came out `is_doc=False`, including all 29
+    # `.rst` files of real documentation.
+    docs_paths:
+      - "README.rst"
+      - "src/jscatter/doc/"

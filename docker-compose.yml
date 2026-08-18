@@ -2,7 +2,7 @@
 #
 #   cp .env.example .env          # once
 #   docker compose up -d
-#   uv run pytest                 # 155 tests; without the container, 127 and 28 skips
+#   uv run pytest                 # 186 tests; without the container, 156 and 30 skips
 #
 # This is a development database and nothing else. It publishes a port, keeps its
 # data in a volume you can delete, and is not the shape anything is deployed in --

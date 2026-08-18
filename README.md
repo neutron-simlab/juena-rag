@@ -3,8 +3,13 @@
 Chunk schema, storage and retrieval for the JCNS knowledge base.
 
 The package owns one thing: **a chunk, once it has been cleaned, gets stored,
-versioned, searched and cited correctly.** It deliberately does *not* parse or chunk
-documents — that stays with whoever knows the format.
+versioned, searched and cited correctly.** It does *not* convert formats, and it does not
+decide where a chunk ends — that stays with whoever knows the document.
+
+**One deliberate exception:** `juena_rag.parsers` reads a source file's *structure* — which
+function, subroutine or section a given line sits inside. That answer is identical for every
+pipeline that will ever read Fortran, and getting it wrong is visible in every citation the
+corpus produces, so it belongs here rather than in each caller.
 
 > Early scaffolding. The contract below is the agreed direction; almost none of it is
 > implemented yet.
@@ -16,6 +21,7 @@ documents — that stays with whoever knows the format.
 | Fetch the file (git, share, wiki, upload) | the caller's connector |
 | Parse it — PDF, DOCX, LaTeX, HTML → text | [docling](https://docling-project.github.io/docling/), a Markdown parser, or a hand-written pipeline |
 | Split into chunks and clean them — including tables into rows | the caller |
+| **Read the structure — which function or section a line is in** | **juena-rag** |
 | **Validate against the schema** | **juena-rag** |
 | **Embed, store, version, replace** | **juena-rag** |
 | **Search, filter, cite** | **juena-rag** |
@@ -25,7 +31,9 @@ chunks differently from a Fortran file. Everything below it must be *exactly one
 implementation, or the corpus becomes a pile of incompatible islands.
 
 So a new document type is a new script in someone's own repository plus a schema
-subclass. It is not a change to this package.
+subclass. It is not a change to this package — with the honest caveat that indexing a
+Fortran codebase *did* change it once, to add that language's parser, and the next
+unfamiliar language will too.
 
 ## Design in brief
 
@@ -94,13 +102,22 @@ git clone <this repo> && cd juena-rag
 uv sync                     # creates .venv, installs deps and the dev group
 cp .env.example .env        # then set POSTGRES_PASSWORD, and a key if you want [embed]
 docker compose up -d        # PostgreSQL 18 with pgvector, on port 5433
-uv run pytest               # 186 tests
+uv run pytest               # 188 tests, 1 skip
 ```
 
-The database is optional. Without it — on a plane, or with the container stopped —
-`uv run pytest` still runs 156 tests and skips the 30 that need one, because an
-unreachable `JUENA_RAG_TEST_DSN` is treated the same as an unset one. Each test works
-in its own throwaway schema and drops it afterwards.
+Two things are optional, and each shows up as skips rather than failures:
+
+| | Passes | Skips |
+| --- | ---: | ---: |
+| `uv run pytest` | 188 | 1 |
+| `uv run pytest`, container stopped | 158 | 31 |
+| `uv run --group use-cases pytest` | **204** | 0 |
+| `uv run --group use-cases pytest`, container stopped | 174 | 30 |
+
+An unreachable `JUENA_RAG_TEST_DSN` is treated the same as an unset one, so the database
+tests skip on a plane. Each of them works in its own throwaway schema and drops it
+afterwards. The single skip in the first row is the chunking suite in `use-cases/`, which
+needs the optional group that carries a code chunker.
 
 The container is a development database and nothing else; it is not the shape anything
 deploys in. See [`deploy/kube/`](deploy/kube/) for that.
@@ -155,6 +172,8 @@ from Hugging Face on first use and cached.
 ```
 src/juena_rag/
 ├── schema/        the chunk schema -- the part other people code against
+├── parsers/       what a source file declares, per language -- one module each,
+│                  all returning the same shape
 ├── embedding/     turning text into vectors; the parts that need a network
 │                  (the client, the vocabulary) are behind [embed]
 └── store/         storage backends, and the SQL schema in ddl.sql
@@ -189,10 +208,11 @@ Two things to know before touching the schema:
 
 | | |
 | --- | --- |
-| Schema | built — models, registry, validation rules, 186 tests |
+| Schema | built — models, registry, validation rules, 204 tests |
+| Parsers | built — Python via `ast`; Fortran, C, C++ and LaTeX via tree-sitter |
 | Embedder | built — Blablador client, token counting, dimension pinned at 4096 |
 | pgvector store | built — `Store` with a two-stage search and an atomic source replace |
 | Local database | built — `docker compose up -d` |
 | Deployed database | built — CloudNativePG, verified on a real cluster; the OpenShift arbitrary-UID question is still open |
 | HTTP service | not started |
-| Ingestion pipelines | out of scope by design — but [`use-cases/code-repository/`](use-cases/code-repository/) is one worked example, and jscatter's 3,293 chunks are the first real corpus this has held |
+| Ingestion pipelines | out of scope by design — but [`use-cases/code-repository/`](use-cases/code-repository/) is one worked example, and eight repositories and 38,477 chunks are the corpus it now holds |

@@ -8,8 +8,10 @@ It clones a git repository, splits every file into chunks, embeds them and store
 thing as **one source** — so a search during an ingest sees the old revision or the new one,
 never a half-built index.
 
-Nothing here is imported by `juena_rag`. It sits outside `src/` deliberately: the package is
-pydantic and nothing else, and this needs git, a YAML parser and a code chunker.
+Nothing here is imported by `juena_rag`. It sits outside `src/` deliberately — cloning
+repositories, reading YAML and choosing chunk boundaries are this pipeline's business, not
+the package's. What *did* move into the package is language parsing: see
+`juena_rag.parsers`, below.
 
 ## Running it
 
@@ -83,40 +85,82 @@ may see guesses generously exactly once.
 
 ## What it produced
 
-jscatter at `0654b756`, on a laptop:
+Two repositories, on a laptop. jscatter is ingested; datreat is measured but not yet
+embedded:
+
+Eight repositories, at `chunk_size: 3000` — [measured, not
+inherited](#how-big-should-a-chunk-be). `sampledb` is the ninth in the chatbot's config and
+is deliberately not here.
+
+| source | chunks | with a `symbol` | doc | prose | files |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| datreat | 12,362 | 7,202 | 134 | 169 | 2,329 |
+| vitess | 11,356 | 2,105 | 594 | 283 | 2,757 |
+| silx | 4,624 | 2,094 | 523 | 356 | 1,006 |
+| sasview | 3,111 | 1,170 | 103 | 385 | 752 |
+| mdanse | 1,921 | 640 | 176 | 555 | 477 |
+| sasdata | 1,872 | 201 | 24 | 427 | 213 |
+| jscatter | 1,641 | 875 | 94 | 229 | 165 |
+| sasmodels | 1,590 | 375 | 130 | 217 | 341 |
+| **total** | **38,477** | **14,662** | **1,778** | **2,621** | **8,040** |
 
 | | |
 | --- | --- |
-| Files → chunks | 170 → 3,293, across 165 distinct files |
-| Kinds | 2,846 `code_block`, 447 `text` |
-| With a `symbol` | 2,467 |
-| Documentation chunks | 181 |
-| Longest chunk | 1,471 tokens, against the model's 8,192 |
-| Embedding | 115 s |
-| On disk | 123 MB, of which the HNSW index is 2.9 MB |
-| A search | 6.9 ms, using `chunks_embedding_bits_idx` |
+| Embedding, all eight | 41 minutes |
+| Longest chunk | 3,000 tokens, against the model's 8,192 — nothing near it |
+| On disk | 730 MB, of which the HNSW index is **27 MB** |
+| A search | 4.3 ms, `Index Scan using chunks_embedding_bits_idx` |
 
-The index being 2.9 MB against a 123 MB table is the binary-quantization decision working as
-designed: one bit per dimension instead of 4,096 floats.
+The index being 27 MB against a 730 MB table is binary quantization working as designed:
+one bit per dimension rather than 4,096 floats.
 
-Retrieval, unscored but real — note the last one, asked in German against an
-English-and-code corpus:
+Retrieval, asked in German against an English-and-code corpus:
 
 ```
---- how do I fit a form factor to small angle scattering data?
-  0.226  src/jscatter/examples/example_Sedimentation.py:37
-  0.240  src/jscatter/doc/source/sas.rst:1 (doc)
-  0.289  src/jscatter/smallanglescattering.py:1855  [transmissionCorrection]
+--- how do I simulate a neutron guide with a curved section?
+  0.251  WWW/guide.html:75  (doc)
+  0.252  FILES/TUTORIALS/RaytracingExample/Ex3h_Raytracing.gui:111  (doc)
+  0.268  SRC/guide.c:1
 
---- calculate the scattering length density of a protein
-  0.241  src/jscatter/examples/example_bio_proteinVolume.py:1
-  0.244  src/jscatter/bio/mda.py:1902  [scatteringUniverse.__init__]
-  0.274  src/jscatter/formel/physics.py:425  [scatteringLengthDensityCalc]
+--- read a NeXus HDF5 file into a data object
+  0.239  sasdata/dataloader/readers/cansas_reader_HDF5.py:41  [Reader]
+  0.274  doc/source/modules/io/nxdata.rst:2  (doc)
 
 --- wie berechne ich den Strukturfaktor einer harten Kugel?
-  0.218  src/jscatter/doc/source/structurefactor.rst:1 (doc)
-  0.330  src/jscatter/structurefactor/fluid.py:1094  [PercusYevick]
+  0.218  src/jscatter/doc/source/structurefactor.rst:1  (doc)
+  0.326  src/jscatter/structurefactor/fluid.py:1046  [PercusYevick]
 ```
+
+The first two cross repositories on their own — a question about guides reaches vitess's C
+source, its HTML documentation and a tutorial file; a question about file formats reaches
+sasdata and silx. Nothing tells the search which repository to look in.
+
+## How big should a chunk be?
+
+`chunk_size` turned out to matter more than the chunker does, so it was measured rather
+than guessed. Two corpora, 25 questions with the expected answer written down first, and
+the rank of the first correct hit recorded:
+
+| `chunk_size` | code, top-3 | code MRR | manual, right content | manual MRR |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,500 — the chatbot's | 7/9 | 0.731 | 13/16 | 0.705 |
+| **3,000 — this pipeline** | **8/9** | 0.759 | **15/16** | **0.865** |
+| 6,000 | 7/9 | **0.828** | 15/16 | 0.812 |
+
+**Bigger chunks retrieve better, up to a point, and cost less.** At 1,500 the median Fortran
+subroutine does not fit in one chunk, so functions get cut mid-body and the docstring that
+carries the meaning is separated from the code it describes. 3,000 halves the chunk count
+*and* improves retrieval — the one place in this project where cheaper and better agreed.
+
+**What it costs is citation precision, and that part is not fixable.** A chunk covering four
+sections cannot honestly be labelled with one of them, so its `heading_path` collapses to
+their shared parent — `Fitting > Model fitting` where a smaller chunk said `Fitting > Model
+fitting > fit Fitting the model parameters to data`. Both are true; the second is more
+useful. Past about 6,000 the retrieval gain stops while this keeps getting worse, which is
+what put the setting at 3,000.
+
+The 25 questions were written by hand, with their expected answers chosen by hand. That
+makes this a sanity check, not a benchmark.
 
 ## How it is put together
 
@@ -124,6 +168,7 @@ English-and-code corpus:
 | --- | --- |
 | [`repository.py`](repository.py) | clone or refresh, resolve the revision, list the files worth indexing |
 | [`chunking.py`](chunking.py) | one file → `list[CodeChunk]` |
+| `juena_rag.parsers` | *in the package* — what each file declares, and on which lines |
 | [`ingest.py`](ingest.py) | wires those to `Store.replace_source` |
 | [`search.py`](search.py) | the other direction — `Store.search`, printed for a person |
 | [`repositories.yaml`](repositories.yaml) | which repositories, and how to treat their files |
@@ -136,10 +181,28 @@ that split the same 170 files into 4,114 chunks instead of 3,293, silently.
 
 Four things it does that the chatbot's version does not: a line range (derived from the
 character offsets, because `formel.py:412-448` is what a citation shows a person), the
-enclosing `def`/`class` from an `ast` walk, `chunk_kind` split between code and prose, and a
-`docs_paths` that actually matches the repository — the chatbot's names `README.md` and
-`docs/`, and jscatter has `README.rst` and `src/jscatter/doc/`, so every chunk in the live
-index is marked `is_doc=False`.
+enclosing definition, `chunk_kind` split between code and prose, and a `docs_paths` that
+actually matches the repository — the chatbot's names `README.md` and `docs/`, and jscatter
+has `README.rst` and `src/jscatter/doc/`, so every chunk in the live index is marked
+`is_doc=False`.
+
+**Symbols come from `juena_rag.parsers`, not from here.** Python uses the standard library's
+`ast`; Fortran, C, C++ and LaTeX use tree-sitter grammars that `chonkie[code]` already
+carried, so supporting them cost a set entry rather than a dependency. A language with no
+parser gets an empty list, never an error — which is what `.yaml`, `.sh`, `.ui` and vitess's
+`.gui` files get, about 19% of the corpus.
+
+**C is parsed without a preprocessor, on purpose.** An unexpanded macro can misparse as a
+function definition, and the grammar then takes the next keyword as its name — which is how
+`main.while` got into a citation before it was caught. Neither C nor C++ nests a function
+inside a function, so the walk refuses to look inside one, and the artifacts go away without
+a macro expander or a list of banned names.
+
+**A chunk is named for what contains all of it.** A chunk running from the end of one
+subroutine into the next is inside neither, so it takes their shared parent, or nothing.
+Naming the one it happened to start in is a citation pointing at a line that does not
+contain what was quoted — which the pipeline did until it was measured, on 392 of jscatter's
+chunks.
 
 ## One source per repository
 

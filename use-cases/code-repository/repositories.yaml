@@ -12,6 +12,15 @@
 #   chunk_size     characters per chunk (not tokens)
 #   chunk_overlap  characters repeated between neighbouring chunks
 #   docs_paths     a file, or a directory prefix, whose chunks are marked is_doc
+#
+# 3000/400 is measured, not inherited. The chatbot uses 1500/200, and at that size
+# the median Fortran subroutine does not fit in one chunk. Over 25 graded
+# questions, 3000 retrieved better for both code (top-3 7/9 -> 8/9) and prose
+# (top-3 13/16 -> 15/16). Past about 6000 the gain stops while chunks start
+# covering several subroutines each -- one vector standing for several separate
+# facts, which is the same argument the README makes against storing a table
+# whole. Raising it also costs citation precision: a chunk spanning four sections
+# can only honestly be labelled with their shared parent.
 
 repositories:
 
@@ -34,8 +43,8 @@ repositories:
       - "**/dist/**"
       - "**/build/**"
     max_file_bytes: 524288          # 512 kB
-    chunk_size: 1500
-    chunk_overlap: 200
+    chunk_size: 3000
+    chunk_overlap: 400
     # Corrected against the actual repository. The chatbot's config says
     # `README.md` and `docs/`, and jscatter has neither -- its readme is
     # `README.rst` and its documentation is under `src/jscatter/doc/`. Nothing
@@ -44,3 +53,497 @@ repositories:
     docs_paths:
       - "README.rst"
       - "src/jscatter/doc/"
+
+  - id: datreat
+    name: Datreat
+    description: "Fortran codebase for neutron scattering data treatment, with a manual."
+    source:
+      url: https://github.com/birkenfeld/datreat.git
+      branch: master
+    include_globs:
+      - "**/*.f"
+      - "**/*.F"
+      - "**/*.for"
+      - "**/*.FOR"
+      - "**/*.f90"
+      - "**/*.F90"
+      - "**/*.f95"
+      - "**/*.F95"
+      - "**/*.f03"
+      - "**/*.F03"
+      - "**/*.inc"
+      - "**/*.INC"
+      - "**/*.md"
+      - "**/*.txt"
+      - "**/*.rst"
+      - "**/*.tex"
+      - "**/Makefile"
+      - "**/makefile"
+      - "**/*.mk"
+      - "**/*.MK"
+    exclude_globs:
+      - "**/node_modules/**"
+      - "**/.git/**"
+      - "**/__pycache__/**"
+      - "**/.venv/**"
+      - "**/dist/**"
+      - "**/build/**"
+      - "**/*.o"
+      - "**/*.a"
+      - "**/*.so"
+    max_file_bytes: 524288          # 512 kB
+    chunk_size: 3000
+    chunk_overlap: 400
+    # `doc/` is right. The chatbot's config also lists `README.md`, which this
+    # repository does not have -- its readme is `README`, with no extension, and
+    # no glob above indexes it either way.
+    docs_paths:
+      - "doc/"
+
+  - id: mdanse
+    name: MDANSE
+    description: "Molecular Dynamics Analysis for Neutron Scattering Experiments, including the MDANSE analysis package and MDANSE_GUI."
+    source:
+      url: https://github.com/ISISNeutronMuon/MDANSE.git
+      branch: protos
+    include_globs:
+      - "**/*.py"
+      - "**/*.pyi"
+      - "**/*.pyx"
+      - "**/*.pxd"
+      - "**/*.c"
+      - "**/*.cc"
+      - "**/*.cpp"
+      - "**/*.cxx"
+      - "**/*.h"
+      - "**/*.hh"
+      - "**/*.hpp"
+      - "**/*.hxx"
+      - "**/*.md"
+      - "**/*.rst"
+      - "**/*.txt"
+      - "**/*.toml"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/*.json"
+      - "**/*.ini"
+      - "**/*.cfg"
+      - "**/*.ui"
+      - "**/*.qrc"
+      - "**/*.sh"
+      - "**/*.bat"
+      - "**/Makefile"
+      - "**/makefile"
+      - "**/*.mk"
+      - "**/*.in"
+    exclude_globs:
+      - "**/node_modules/**"
+      - "**/.git/**"
+      - "**/__pycache__/**"
+      - "**/.venv/**"
+      - "**/dist/**"
+      - "**/build/**"
+      - "**/*.egg-info/**"
+      - "**/.mypy_cache/**"
+      - "**/.pytest_cache/**"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.ico"
+      - "**/*.pdf"
+      - "**/*.zip"
+      - "**/*.tar"
+      - "**/*.gz"
+      - "**/*.bz2"
+      - "**/*.xz"
+      - "**/*.whl"
+      - "**/*.so"
+      - "**/*.dylib"
+      - "**/*.dll"
+      - "**/*.pyd"
+      - "**/*.exe"
+    max_file_bytes: 524288
+    chunk_size: 3000
+    chunk_overlap: 400
+    docs_paths:
+      - "README.md"
+      - "CHANGELOG"
+      - "Doc/"
+
+  - id: sasview
+    name: SasView
+    description: "Small-angle scattering analysis application. Depends on sasmodels for scattering models and sasdata for SAS data loading and exchange."
+    source:
+      url: https://github.com/SasView/sasview.git
+      branch: main
+    include_globs:
+      - "**/*.py"
+      - "**/*.pyi"
+      - "**/*.pyx"
+      - "**/*.pxd"
+      - "**/*.c"
+      - "**/*.cc"
+      - "**/*.cpp"
+      - "**/*.cxx"
+      - "**/*.h"
+      - "**/*.hh"
+      - "**/*.hpp"
+      - "**/*.hxx"
+      - "**/*.md"
+      - "**/*.rst"
+      - "**/*.txt"
+      - "**/*.toml"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/*.json"
+      - "**/*.ini"
+      - "**/*.cfg"
+      - "**/*.ui"
+      - "**/*.qrc"
+      - "**/*.sh"
+      - "**/*.bat"
+      - "**/Makefile"
+      - "**/makefile"
+      - "**/*.mk"
+      - "**/*.in"
+    exclude_globs:
+      - "**/node_modules/**"
+      - "**/.git/**"
+      - "**/__pycache__/**"
+      - "**/.venv/**"
+      - "**/dist/**"
+      - "**/build/**"
+      - "**/*.egg-info/**"
+      - "**/.mypy_cache/**"
+      - "**/.pytest_cache/**"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.ico"
+      - "**/*.pdf"
+      - "**/*.zip"
+      - "**/*.tar"
+      - "**/*.gz"
+      - "**/*.bz2"
+      - "**/*.xz"
+      - "**/*.whl"
+      - "**/*.so"
+      - "**/*.dylib"
+      - "**/*.dll"
+      - "**/*.pyd"
+      - "**/*.exe"
+    max_file_bytes: 524288
+    chunk_size: 3000
+    chunk_overlap: 400
+    docs_paths:
+      - "README.md"
+      - "INSTALL.md"
+      - "RESOURCES.md"
+      - "docs/"
+
+  - id: sasmodels
+    name: sasmodels
+    description: "Scattering-model calculation library used by SasView. Provides theory models and native-code kernels that integrate with sasview workflows."
+    source:
+      url: https://github.com/SasView/sasmodels.git
+      branch: master
+    include_globs:
+      - "**/*.py"
+      - "**/*.pyi"
+      - "**/*.pyx"
+      - "**/*.pxd"
+      - "**/*.c"
+      - "**/*.cc"
+      - "**/*.cpp"
+      - "**/*.cxx"
+      - "**/*.h"
+      - "**/*.hh"
+      - "**/*.hpp"
+      - "**/*.hxx"
+      - "**/*.cl"
+      - "**/*.md"
+      - "**/*.rst"
+      - "**/*.txt"
+      - "**/*.toml"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/*.json"
+      - "**/*.ini"
+      - "**/*.cfg"
+      - "**/*.sh"
+      - "**/*.bat"
+      - "**/Makefile"
+      - "**/makefile"
+      - "**/*.mk"
+      - "**/*.in"
+    exclude_globs:
+      - "**/node_modules/**"
+      - "**/.git/**"
+      - "**/__pycache__/**"
+      - "**/.venv/**"
+      - "**/dist/**"
+      - "**/build/**"
+      - "**/*.egg-info/**"
+      - "**/.mypy_cache/**"
+      - "**/.pytest_cache/**"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.ico"
+      - "**/*.pdf"
+      - "**/*.zip"
+      - "**/*.tar"
+      - "**/*.gz"
+      - "**/*.bz2"
+      - "**/*.xz"
+      - "**/*.whl"
+      - "**/*.so"
+      - "**/*.dylib"
+      - "**/*.dll"
+      - "**/*.pyd"
+      - "**/*.exe"
+    max_file_bytes: 524288
+    chunk_size: 3000
+    chunk_overlap: 400
+    docs_paths:
+      - "README.rst"
+      - "CHANGES.rst"
+      - "doc/"
+
+  - id: sasdata
+    name: sasdata
+    description: "SAS data loading and handling package used by SasView. Provides data import, export, and shared data structures for SAS workflows."
+    source:
+      url: https://github.com/SasView/sasdata.git
+      branch: master
+    include_globs:
+      - "**/*.py"
+      - "**/*.pyi"
+      - "**/*.pyx"
+      - "**/*.pxd"
+      - "**/*.c"
+      - "**/*.cc"
+      - "**/*.cpp"
+      - "**/*.cxx"
+      - "**/*.h"
+      - "**/*.hh"
+      - "**/*.hpp"
+      - "**/*.hxx"
+      - "**/*.md"
+      - "**/*.rst"
+      - "**/*.txt"
+      - "**/*.toml"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/*.json"
+      - "**/*.ini"
+      - "**/*.cfg"
+      - "**/*.sh"
+      - "**/*.bat"
+      - "**/Makefile"
+      - "**/makefile"
+      - "**/*.mk"
+      - "**/*.in"
+    exclude_globs:
+      - "**/node_modules/**"
+      - "**/.git/**"
+      - "**/__pycache__/**"
+      - "**/.venv/**"
+      - "**/dist/**"
+      - "**/build/**"
+      - "**/*.egg-info/**"
+      - "**/.mypy_cache/**"
+      - "**/.pytest_cache/**"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.ico"
+      - "**/*.pdf"
+      - "**/*.zip"
+      - "**/*.tar"
+      - "**/*.gz"
+      - "**/*.bz2"
+      - "**/*.xz"
+      - "**/*.whl"
+      - "**/*.so"
+      - "**/*.dylib"
+      - "**/*.dll"
+      - "**/*.pyd"
+      - "**/*.exe"
+    max_file_bytes: 524288
+    chunk_size: 3000
+    chunk_overlap: 400
+    docs_paths:
+      - "README.md"
+      - "docs/"
+
+  - id: silx
+    name: silx
+    description: "Python toolkit for data assessment, reduction, analysis, file I/O, OpenCL processing, and Qt visualization widgets at synchrotron facilities."
+    source:
+      url: https://github.com/silx-kit/silx.git
+      branch: main
+    include_globs:
+      - "**/*.py"
+      - "**/*.pyi"
+      - "**/*.pyx"
+      - "**/*.pxd"
+      - "**/*.c"
+      - "**/*.cc"
+      - "**/*.cpp"
+      - "**/*.cxx"
+      - "**/*.h"
+      - "**/*.hh"
+      - "**/*.hpp"
+      - "**/*.hxx"
+      - "**/*.cl"
+      - "**/*.md"
+      - "**/*.rst"
+      - "**/*.txt"
+      - "**/*.toml"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/*.json"
+      - "**/*.ini"
+      - "**/*.cfg"
+      - "**/*.ui"
+      - "**/*.qrc"
+      - "**/*.sh"
+      - "**/*.bat"
+      - "**/Makefile"
+      - "**/makefile"
+      - "**/*.mk"
+      - "**/*.in"
+      - "**/meson.build"
+      - "**/meson.options"
+    exclude_globs:
+      - "**/node_modules/**"
+      - "**/.git/**"
+      - "**/__pycache__/**"
+      - "**/.venv/**"
+      - "**/dist/**"
+      - "**/build/**"
+      - "**/*.egg-info/**"
+      - "**/.mypy_cache/**"
+      - "**/.pytest_cache/**"
+      - "**/.tox/**"
+      - "**/.cache/**"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.ico"
+      - "**/*.pdf"
+      - "**/*.zip"
+      - "**/*.tar"
+      - "**/*.gz"
+      - "**/*.bz2"
+      - "**/*.xz"
+      - "**/*.whl"
+      - "**/*.so"
+      - "**/*.dylib"
+      - "**/*.dll"
+      - "**/*.pyd"
+      - "**/*.exe"
+    max_file_bytes: 524288
+    chunk_size: 3000
+    chunk_overlap: 400
+    docs_paths:
+      - "README.rst"
+      - "CHANGELOG.rst"
+      - "CONTRIBUTING.rst"
+      - "doc/"
+      - "examples/"
+
+  - id: vitess
+    name: VITESS
+    description: "Virtual Instrumentation Tool for ESS. Software to simulate neutron scattering experiments and instrument components."
+    source:
+      url: https://iffgit.fz-juelich.de/vitess/vitess.git
+      branch: develop
+    include_globs:
+      - "**/*.c"
+      - "**/*.cc"
+      - "**/*.cpp"
+      - "**/*.cxx"
+      - "**/*.h"
+      - "**/*.hh"
+      - "**/*.hpp"
+      - "**/*.hxx"
+      - "**/*.f"
+      - "**/*.py"
+      - "**/*.pl"
+      - "**/*.tcl"
+      - "**/*.sh"
+      - "**/*.bat"
+      - "**/*.cmake"
+      - "**/*.in"
+      - "**/*.ini"
+      - "**/*.cfg"
+      - "**/*.gui"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/*.toml"
+      - "**/*.md"
+      - "**/*.rst"
+      - "**/*.txt"
+      - "**/*.html"
+      - "**/*.tex"
+      - "**/Makefile"
+      - "**/makefile"
+      - "**/*.mak"
+    exclude_globs:
+      - "**/node_modules/**"
+      - "**/.git/**"
+      - "**/__pycache__/**"
+      - "**/.venv/**"
+      - "**/dist/**"
+      - "**/build/**"
+      - "**/*.egg-info/**"
+      - "**/.mypy_cache/**"
+      - "**/.pytest_cache/**"
+      - "BITMAPS/**"
+      - "FILES/EXAMPLES/**"
+      - "FILES/sample_files/**"
+      - "FILES/reflectivity_files/**"
+      - "tests/examples/**"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.ico"
+      - "**/*.pdf"
+      - "**/*.dat"
+      - "**/*.nxs"
+      - "**/*.iso"
+      - "**/*.log"
+      - "**/*.out"
+      - "**/*.exe"
+      - "**/*.dll"
+      - "**/*.so"
+      - "**/*.dylib"
+      - "**/*.a"
+      - "**/*.o"
+      - "**/*.obj"
+      - "**/*.lib"
+      - "**/*.ncmat"
+    max_file_bytes: 524288
+    chunk_size: 3000
+    chunk_overlap: 400
+    docs_paths:
+      - "README.md"
+      - "Concepts/"
+      - "RelNotes/"
+      - "FILES/TUTORIALS/"
+      - "GUI-Qt/help/"
+      - "WWW/"

@@ -14,6 +14,12 @@ keywords = ["rag", "vector-search", "pgvector", "neutron-scattering"]
 # and nothing else, so the database and web layers are extras.
 dependencies = [
     "pydantic>=2.11.2,<3.0.0",
+    # For `juena_rag.parsers`, which reads a source file's structure. Grammars
+    # rather than pattern matching, because Fortran's two source layouts and
+    # LaTeX's nesting both defeat regexes -- and 4.8 MB of compiled grammar is a
+    # smaller cost than getting a citation's function name wrong.
+    "tree-sitter>=0.23",
+    "tree-sitter-language-pack>=0.7",
 ]
 
 [project.optional-dependencies]

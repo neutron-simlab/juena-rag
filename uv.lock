@@ -617,6 +617,8 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
+    { name = "tree-sitter" },
+    { name = "tree-sitter-language-pack" },
 ]
 
 [package.optional-dependencies]
@@ -656,6 +658,8 @@ requires-dist = [
     { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'store'", specifier = "==3.3.4" },
     { name = "pydantic", specifier = ">=2.11.2,<3.0.0" },
     { name = "tokenizers", marker = "extra == 'embed'", specifier = ">=0.20" },
+    { name = "tree-sitter", specifier = ">=0.23" },
+    { name = "tree-sitter-language-pack", specifier = ">=0.7" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'serve'", specifier = ">=0.24.0" },
 ]
 provides-extras = ["store", "embed", "serve"]

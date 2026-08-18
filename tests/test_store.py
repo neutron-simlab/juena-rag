@@ -57,18 +57,15 @@ def test_every_column_a_chunk_does_not_have_is_derived():
     assert row["schema_version"] == SCHEMA_VERSION
 
 
-def test_category_and_visibility_come_from_the_source_not_the_chunk():
-    """A chunk cannot claim a category or an audience of its own."""
+def test_a_chunks_category_is_written_from_the_source():
+    """The stored value is the source's, not something the chunk supplied."""
     batch = ChunkBatch(
-        source=a_source(category="code", visibility="public"),
+        source=a_source(category="code"),
         chunks=[CodeChunk(text="def f(): ...", symbol="f")],
     )
     row = chunk_rows(batch, [[0.0] * 8], "fake-embedder")[0]
 
     assert row["category"] == "code"
-    assert row["visibility"] == "public"
-    # And there is no way for the chunk to have said otherwise:
-    assert "visibility" not in CodeChunk.model_fields
 
 
 def test_chunk_index_is_list_position_and_the_caller_never_supplies_it():
@@ -152,7 +149,7 @@ def test_the_source_row_leaves_active_revision_alone():
 def test_a_batch_becomes_rows_that_come_back_as_hits(store):
     store.replace_source(a_batch("The detector moves on rails.", "Neutrons scatter."))
 
-    result = store.search("detector", visibility=["internal"])
+    result = store.search("detector")
 
     assert isinstance(result, SearchResult)
     assert len(result.hits) == 2
@@ -167,7 +164,7 @@ def test_the_query_finds_the_chunk_whose_text_it_is(store):
     """The FakeEmbedder hashes text, so identical text is distance zero."""
     store.replace_source(a_batch("alpha", "beta", "gamma"))
 
-    result = store.search("beta", visibility=["internal"], n=1)
+    result = store.search("beta", n=1)
 
     assert len(result.hits) == 1
     assert result.hits[0].text == "beta"
@@ -177,9 +174,7 @@ def test_the_query_finds_the_chunk_whose_text_it_is(store):
 def test_hits_arrive_ordered_by_distance(store):
     store.replace_source(a_batch("alpha", "beta", "gamma", "delta"))
 
-    distances = [
-        hit.distance for hit in store.search("beta", visibility=["internal"]).hits
-    ]
+    distances = [hit.distance for hit in store.search("beta").hits]
 
     assert distances == sorted(distances)
 
@@ -193,7 +188,7 @@ def test_the_documents_travel_with_the_hits(store):
         )
     )
 
-    result = store.search("detector", visibility=["internal"])
+    result = store.search("detector")
     document = result.source_of(result.hits[0])
 
     assert isinstance(document, SourceRow)
@@ -204,43 +199,23 @@ def test_the_documents_travel_with_the_hits(store):
 def test_one_document_appears_once_however_many_hits_it_produced(store):
     store.replace_source(a_batch("alpha", "beta", "gamma"))
 
-    result = store.search("beta", visibility=["internal"])
+    result = store.search("beta")
 
     assert len(result.hits) == 3
     assert len(result.sources) == 1
 
 
-def test_visibility_filters_inside_the_query(store):
-    store.replace_source(a_batch("public thing", source_id="open", visibility="public"))
-    store.replace_source(
-        a_batch("restricted thing", source_id="closed", visibility="restricted")
-    )
-
-    visible = store.search("thing", visibility=["public"])
-
-    assert [hit.text for hit in visible.hits] == ["public thing"]
-    assert [source.source_id for source in visible.sources] == ["open"]
-
-
-def test_visibility_is_required_and_an_empty_list_is_refused(store):
-    """An empty list can only ever match nothing, which is never what was meant."""
-    with pytest.raises(TypeError):
-        store.search("anything")  # type: ignore[call-arg]
-    with pytest.raises(ValueError, match="can only ever match nothing"):
-        store.search("anything", visibility=[])
-
-
 def test_asking_for_more_than_was_retrieved_is_refused(store):
     with pytest.raises(ValueError, match="exceeds k"):
-        store.search("anything", visibility=["internal"], k=5, n=10)
+        store.search("anything", k=5, n=10)
 
 
 def test_sources_and_categories_narrow_the_search(store):
     store.replace_source(a_batch("alpha", source_id="one", category="manual"))
     store.replace_source(a_batch("alpha", source_id="two", category="code"))
 
-    by_source = store.search("alpha", visibility=["internal"], sources=["one"])
-    by_category = store.search("alpha", visibility=["internal"], categories=["code"])
+    by_source = store.search("alpha", sources=["one"])
+    by_category = store.search("alpha", categories=["code"])
 
     assert [hit.source_id for hit in by_source.hits] == ["one"]
     assert [hit.source_id for hit in by_category.hits] == ["two"]
@@ -250,7 +225,7 @@ def test_replacing_a_source_leaves_exactly_the_new_revision(store):
     store.replace_source(a_batch("old one", "old two", revision="v1"))
     store.replace_source(a_batch("new one", revision="v2"))
 
-    result = store.search("one", visibility=["internal"])
+    result = store.search("one")
 
     assert [hit.text for hit in result.hits] == ["new one"]
     assert result.hits[0].source_revision == "v2"
@@ -267,7 +242,7 @@ def test_replacing_a_source_at_the_same_revision_works(store):
     store.replace_source(a_batch("first go", revision="v1"))
     store.replace_source(a_batch("chunked differently", revision="v1"))
 
-    result = store.search("chunked", visibility=["internal"])
+    result = store.search("chunked")
 
     assert [hit.text for hit in result.hits] == ["chunked differently"]
     assert store.status().chunks == 1
@@ -312,7 +287,7 @@ def test_a_reader_never_sees_a_half_replaced_source(store):
     writer.start()
     try:
         while not stop.is_set():
-            hits = store.search("chunk 3", visibility=["internal"], k=20, n=20).hits
+            hits = store.search("chunk 3", k=20, n=20).hits
             if not hits:
                 failures.append("a search saw no chunks at all")
                 break
@@ -336,7 +311,7 @@ def test_upsert_changes_some_chunks_and_leaves_the_rest(store):
     )
     written = store.upsert_chunks(changed)
 
-    texts = {hit.text for hit in store.search("alpha", visibility=["internal"]).hits}
+    texts = {hit.text for hit in store.search("alpha").hits}
     assert written == 2
     assert texts == {"alpha", "BETA", "gamma"}
 
@@ -395,19 +370,13 @@ def test_register_source_declares_one_with_no_content_yet(store):
     assert catalogue[0].active_revision is None
 
 
-def test_get_structure_resolves_only_a_visible_current_revision(store):
-    store.replace_source(a_batch("alpha", revision="v3", visibility="internal"))
+def test_get_structure_resolves_only_the_current_revision(store):
+    store.replace_source(a_batch("alpha", revision="v3"))
 
-    assert store.get_structure("kws1-manual", visibility=["internal"]) is not None
-    assert store.get_structure("kws1-manual", visibility=["public"]) is None
-    assert (
-        store.get_structure("kws1-manual", visibility=["internal"], revision="v3")
-        is not None
-    )
-    assert (
-        store.get_structure("kws1-manual", visibility=["internal"], revision="v1")
-        is None
-    )
+    assert store.get_structure("kws1-manual") is not None
+    assert store.get_structure("kws1-manual", revision="v3") is not None
+    assert store.get_structure("kws1-manual", revision="v1") is None
+    assert store.get_structure("no-such-source") is None
 
 
 def test_status_reports_one_embedding_model_for_a_consistent_corpus(store):
@@ -442,7 +411,6 @@ def test_the_search_query_reaches_the_vector_index(store):
 
     parameters = {
         "query": Vector(FakeEmbedder(dimension=8).embed_query("sentence number 42")),
-        "visibility": ["internal"],
         "sources": None,
         "categories": None,
         "chunk_kinds": None,

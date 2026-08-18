@@ -57,7 +57,6 @@ from juena_rag.schema.vocabulary import (
     SCHEMA_VERSION,
     ArtifactFormat,
     ChunkKind,
-    Visibility,
     compute_content_hash,
     derive_chunk_id,
 )
@@ -84,7 +83,6 @@ __all__ = [
     "SourceMetadata",
     "SourceRow",
     "Table",
-    "Visibility",
     "WikiChunk",
     "chunk_class",
     "compute_content_hash",

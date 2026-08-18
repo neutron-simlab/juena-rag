@@ -161,11 +161,11 @@ def test_the_width_is_pinned_into_the_column(database):
             """
             INSERT INTO chunks (
                 chunk_id, source_id, source_revision, chunk_index,
-                category, visibility, text, content_hash,
+                category, text, content_hash,
                 embedding, embedding_model, schema_version
             ) VALUES (
                 'c', 's', 'r1', 0,
-                'manual', 'internal', 'some text', 'deadbeef',
+                'manual', 'some text', 'deadbeef',
                 '[1,2,3]', 'alias-qwen3-8b-embeddings', 1
             )
             """

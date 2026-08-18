@@ -14,7 +14,6 @@ CREATE TABLE sources (
     source_id       text PRIMARY KEY,
     category        text        NOT NULL,
     title           text,
-    visibility      text        NOT NULL DEFAULT 'internal',
     active_revision text,
 
     -- the artifact, for documents that have one; all NULL for code sources
@@ -33,7 +32,6 @@ CREATE TABLE chunks (
     chunk_index     int  NOT NULL,
 
     category        text NOT NULL,          -- filtered
-    visibility      text NOT NULL,
     language        text,
     chunk_kind      text NOT NULL DEFAULT 'text',
 
@@ -68,7 +66,7 @@ CREATE INDEX chunks_embedding_bits_idx ON chunks USING hnsw
 CREATE UNIQUE INDEX chunks_revision_idx
     ON chunks (source_id, source_revision, chunk_index);
 
-CREATE INDEX chunks_permission_idx ON chunks (category, visibility);
+CREATE INDEX chunks_category_idx ON chunks (category);
 
 -- Partial on purpose. Most chunks are ordinary prose, and an index over a value
 -- that matches most rows earns nothing while still costing space on every write.

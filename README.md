@@ -81,7 +81,8 @@ Two things ship from this repository, and it matters which one a caller uses.
 | **The service** | a container running `juena-rag serve` beside a pgvector instance | applications that search the corpus |
 
 Both deployment targets — a single-node cluster on a VM, and the institute's OpenShift —
-run Kubernetes, so the service is one Deployment, one Service and one Route, described
+run Kubernetes, so the service is one Deployment, one Service and one internal Route —
+reached over the institute VPN, never the public internet — described
 once and sized differently per environment. pgvector is a StatefulSet with its own
 storage claim, deliberately its own instance rather than a schema inside an application's
 database.
@@ -89,8 +90,8 @@ database.
 **Applications search over HTTP; they do not open the database.** Talking to pgvector
 directly from an application would work — it is a real database server and concurrent
 access is safe. The objection is architectural. Direct access puts schema migrations in
-lockstep across every consumer, duplicates permission filtering into each of them, and
-replaces the API contract with a table layout that nobody can change afterwards. The
+lockstep across every consumer, hands each of them the embedding API key, and replaces the
+API contract with a table layout that nobody can change afterwards. The
 `[store]` extra exists for this service and for ingestion pipelines, not for consumers.
 
 ## Getting started

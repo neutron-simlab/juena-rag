@@ -33,23 +33,12 @@ def test_artifact_uri_without_format_is_rejected():
 
 
 def test_code_sources_leave_every_artifact_field_unset():
-    source = SourceMetadata(
-        source_id="juena", category="code", revision="a1b2c3d", visibility="internal"
-    )
+    source = SourceMetadata(source_id="juena", category="code", revision="a1b2c3d")
 
     assert source.artifact_uri is None
     assert source.artifact_format is None
     assert source.artifact_hash is None
     assert source.parser is None
-
-
-def test_visibility_is_a_closed_vocabulary():
-    """A typo would otherwise make a chunk invisible to everyone, permanently."""
-    with pytest.raises(ValidationError):
-        a_source(visibility="internl")
-
-    assert a_source(visibility="public").visibility == "public"
-    assert a_source().visibility == "internal"
 
 
 def test_a_misspelled_source_field_is_rejected_rather_than_ignored():
@@ -64,7 +53,6 @@ def a_source_row(**overrides) -> SourceRow:
         "source_id": "kws1-manual",
         "category": "manual",
         "active_revision": "v3",
-        "visibility": "internal",
         "updated_at": datetime.now(UTC),
     }
     return SourceRow(**{**defaults, **overrides})
@@ -90,10 +78,6 @@ def test_a_source_row_may_have_no_active_revision_yet():
     row = a_source_row(active_revision=None)
 
     assert row.active_revision is None
-
-
-def test_a_source_row_reads_a_visibility_this_version_does_not_know():
-    assert a_source_row(visibility="embargoed").visibility == "embargoed"
 
 
 def test_a_source_row_reads_an_artifact_format_this_version_does_not_know():
@@ -326,7 +310,6 @@ def a_chunk_row(**overrides) -> ChunkRow:
         "source_revision": "v3",
         "chunk_index": 0,
         "category": "manual",
-        "visibility": "internal",
         "chunk_kind": "text",
         "text": "Before each run …",
         "content_hash": compute_content_hash("Before each run …"),
@@ -352,10 +335,6 @@ def test_a_chunk_row_reads_a_kind_this_version_does_not_know():
     assert a_chunk_row(chunk_kind="figure").chunk_kind == "figure"
 
 
-def test_a_chunk_row_reads_a_visibility_this_version_does_not_know():
-    assert a_chunk_row(visibility="embargoed").visibility == "embargoed"
-
-
 def test_a_chunk_row_without_a_kind_raises_rather_than_defaulting_to_text():
     with pytest.raises(ValidationError):
         ChunkRow(
@@ -364,7 +343,6 @@ def test_a_chunk_row_without_a_kind_raises_rather_than_defaulting_to_text():
             source_revision="v3",
             chunk_index=0,
             category="manual",
-            visibility="internal",
             text="…",
             content_hash="y",
             embedding_model="m",

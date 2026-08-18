@@ -9,10 +9,6 @@ from typing import Literal
 #: Bumped when the meaning of a stored row changes. Written onto every chunk.
 SCHEMA_VERSION = 1
 
-#: Who may see a source. Closed on purpose, unlike ``category``: a typo in a free
-#: string would match no entitlement check, hiding the chunk from everyone.
-Visibility = Literal["public", "internal", "restricted"]
-
 #: What the stored original is. The retrieval agent branches on it.
 ArtifactFormat = Literal["docling-json", "markdown"]
 

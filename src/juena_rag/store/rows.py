@@ -28,7 +28,6 @@ CHUNK_INSERT_COLUMNS = (
     "source_revision",
     "chunk_index",
     "category",
-    "visibility",
     "language",
     "chunk_kind",
     "source_uri",
@@ -65,9 +64,9 @@ def chunk_row(
 ) -> dict[str, Any]:
     """One chunk's row, ready to insert. ``ingested_at`` is the database's.
 
-    ``category`` and ``visibility`` come from the *source*, not the chunk: a chunk
-    has no say in either, so a document cannot hold a paragraph that is readable
-    by a different audience than the rest of it.
+    ``category`` comes from the *source*, not the chunk: a chunk has no say in it,
+    so a document cannot hold a paragraph filed under a different category than
+    the rest of it.
     """
     return {
         "chunk_id": derive_chunk_id(source.source_id, source.revision, chunk_index),
@@ -75,7 +74,6 @@ def chunk_row(
         "source_revision": source.revision,
         "chunk_index": chunk_index,
         "category": source.category,
-        "visibility": source.visibility,
         "language": chunk.language,
         "chunk_kind": chunk.chunk_kind,
         "source_uri": chunk.source_uri,
@@ -123,7 +121,6 @@ def source_row(source: SourceMetadata) -> dict[str, Any]:
         "source_id": source.source_id,
         "category": source.category,
         "title": source.title,
-        "visibility": source.visibility,
         "artifact_uri": source.artifact_uri,
         "artifact_format": source.artifact_format,
         "artifact_hash": source.artifact_hash,

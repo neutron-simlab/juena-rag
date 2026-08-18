@@ -20,7 +20,6 @@ from pydantic import BaseModel, Field, model_validator
 from juena_rag.schema.vocabulary import (
     ArtifactFormat,
     ChunkKind,
-    Visibility,
     check_range,
 )
 
@@ -43,11 +42,6 @@ class SourceMetadata(BaseModel):
     revision: str = Field(min_length=1)
 
     title: str | None = None
-
-    #: Required, with no default. The closed vocabulary stops a typo; requiring it
-    #: stops the quieter failure, where nobody chose at all and a corpus acquires
-    #: its permissions from whatever this package happened to think was safe.
-    visibility: Visibility
 
     # The original file, for documents that have one. All four are unset for code
     # sources, and that is correct rather than incomplete.
@@ -244,9 +238,9 @@ class SourceRow(BaseModel):
     - ``updated_at`` has no equivalent on the input side; nobody submits it, the
       store sets it.
 
-    Read leniently on purpose -- ``visibility`` and ``artifact_format`` widened
-    to plain strings -- so a row written by a newer version of this package
-    stays readable by an older one. Does not repeat ``SourceMetadata``'s
+    Read leniently on purpose -- ``artifact_format`` widened to a plain string --
+    so a row written by a newer version of this package stays readable by an
+    older one. Does not repeat ``SourceMetadata``'s
     artifact-format validator either: that rule guards what a caller may submit,
     not what a routine read is allowed to see.
     """
@@ -256,7 +250,6 @@ class SourceRow(BaseModel):
     active_revision: str | None = None  # unset before a source's first ingest
 
     title: str | None = None
-    visibility: str  # widened; see the docstring
 
     artifact_uri: str | None = None
     artifact_format: str | None = None  # widened; see the docstring
@@ -275,9 +268,9 @@ class ChunkRow(BaseModel):
     :class:`Chunk` -- what identifies *which* chunk this is is the trio below,
     not those three, so there was nothing that needed to be shared.
 
-    Read leniently on purpose -- no ``extra="forbid"``, and ``chunk_kind`` and
-    ``visibility`` widened to plain strings -- so a row written by a newer version
-    of this package stays readable by an older one.
+    Read leniently on purpose -- no ``extra="forbid"``, and ``chunk_kind``
+    widened to a plain string -- so a row written by a newer version of this
+    package stays readable by an older one.
 
     **No vector field, deliberately.** The row has an ``embedding`` column, but
     nothing in Python reads it: search runs in SQL and only ever returns text.
@@ -305,7 +298,6 @@ class ChunkRow(BaseModel):
     language: str | None = None
 
     category: str
-    visibility: str  # widened; see the docstring
     chunk_kind: str  # widened; see the docstring
 
     content_hash: str

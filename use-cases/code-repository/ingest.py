@@ -38,10 +38,6 @@ DEFAULT_CONFIG = HERE / "repositories.yaml"
 #: the chatbot's `data/repos` to reuse a clone it already has.
 DEFAULT_CACHE_DIR = HERE.parent.parent / "data" / "repos"
 
-#: Public open-source code. Every chunk of every source here inherits this, so it
-#: is a per-run decision rather than something buried in the YAML.
-VISIBILITY = "public"
-
 
 def collect(config: RepoConfig, root: Path, limit: int | None) -> list:
     """Chunk every indexable file, numbered continuously across the repository.
@@ -180,7 +176,7 @@ def main() -> int:
     report_tokens(chunks, ceiling=embedder.metadata.max_input_tokens)
 
     with Store(dsn, embedder=embedder) as store:
-        stored = store.get_structure(config.id, visibility=[VISIBILITY])
+        stored = store.get_structure(config.id)
         if (
             stored is not None
             and stored.active_revision == revision
@@ -195,7 +191,6 @@ def main() -> int:
                 category="code",
                 revision=revision,
                 title=config.name,
-                visibility=VISIBILITY,
                 # The four artifact columns stay unset. A repository is its own
                 # original -- there is no parsed file to point back at.
             ),

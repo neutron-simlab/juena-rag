@@ -255,7 +255,6 @@ class Store:
         self,
         query: str,
         *,
-        visibility: Sequence[str],
         sources: Sequence[str] | None = None,
         categories: Sequence[str] | None = None,
         chunk_kinds: Sequence[str] | None = None,
@@ -264,15 +263,9 @@ class Store:
     ) -> SearchResult:
         """Find the ``n`` chunks closest to ``query``, among ``k`` the index retrieved.
 
-        ``visibility`` is required and has no default: a store that guesses which
-        visibilities a caller may see will guess generously exactly once. The
-        filter is applied inside the SQL, never after it.
+        Every filter here is applied inside the SQL, never after it: filtering a
+        result set in Python leaks through the count and the ordering.
         """
-        if not visibility:
-            raise ValueError(
-                "`visibility` is empty, which can only ever match nothing. Pass the "
-                "levels this caller is entitled to, e.g. visibility=['public']."
-            )
         k = self.k if k is None else k
         n = self.n if n is None else n
         if n > k:
@@ -284,7 +277,6 @@ class Store:
         embedded = Vector(self._embedder.embed_query(query))
         parameters = {
             "query": embedded,
-            "visibility": list(visibility),
             "sources": list(sources) if sources is not None else None,
             "categories": list(categories) if categories is not None else None,
             "chunk_kinds": list(chunk_kinds) if chunk_kinds is not None else None,
@@ -315,35 +307,26 @@ class Store:
 
         return SearchResult(sources=documents, hits=hits)
 
-    def list_sources(
-        self, *, visibility: Sequence[str] | None = None
-    ) -> list[SourceRow]:
-        """The catalogue, newest first. ``visibility=None`` means every level."""
+    def list_sources(self) -> list[SourceRow]:
+        """The catalogue, newest first."""
         with (
             self._pool.connection() as connection,
             connection.cursor(row_factory=dict_row) as cursor,
         ):
-            cursor.execute(
-                "SELECT * FROM sources "
-                "WHERE (%(visibility)s::text[] IS NULL "
-                "       OR visibility = ANY(%(visibility)s)) "
-                "ORDER BY updated_at DESC, source_id",
-                {"visibility": list(visibility) if visibility is not None else None},
-            )
+            cursor.execute("SELECT * FROM sources ORDER BY updated_at DESC, source_id")
             return [SourceRow.model_validate(row) for row in cursor.fetchall()]
 
     def get_structure(
         self,
         source_id: str,
         *,
-        visibility: Sequence[str],
         revision: str | None = None,
     ) -> SourceRow | None:
-        """One document, if it is visible and still at the revision asked for.
+        """One document, if it is still at the revision asked for.
 
-        ``None`` covers all three ways this fails -- absent, not permitted, moved
-        on -- because telling them apart would say whether a source exists to a
-        caller not entitled to know.
+        ``None`` covers both ways this fails -- absent, or moved on -- because a
+        caller that cannot act on the difference is better served by one answer
+        than by two it has to branch on.
         """
         with (
             self._pool.connection() as connection,
@@ -352,14 +335,9 @@ class Store:
             cursor.execute(
                 "SELECT * FROM sources "
                 "WHERE source_id = %(source_id)s "
-                "  AND visibility = ANY(%(visibility)s) "
                 "  AND (%(revision)s::text IS NULL "
                 "       OR active_revision = %(revision)s)",
-                {
-                    "source_id": source_id,
-                    "visibility": list(visibility),
-                    "revision": revision,
-                },
+                {"source_id": source_id, "revision": revision},
             )
             row = cursor.fetchone()
         return SourceRow.model_validate(row) if row else None
@@ -413,12 +391,11 @@ def _search_sql(dimension: int) -> str:
     return f"""
         WITH candidates AS (
             SELECT chunk_id, source_id, source_revision, chunk_index,
-                   text, source_uri, language, category, visibility, chunk_kind,
+                   text, source_uri, language, category, chunk_kind,
                    content_hash, extra, embedding_model, schema_version,
                    embedding <=> %(query)s AS distance
             FROM chunks
-            WHERE visibility = ANY(%(visibility)s)
-              AND (%(sources)s::text[] IS NULL OR source_id = ANY(%(sources)s))
+            WHERE (%(sources)s::text[] IS NULL OR source_id = ANY(%(sources)s))
               AND (%(categories)s::text[] IS NULL OR category = ANY(%(categories)s))
               AND (%(chunk_kinds)s::text[] IS NULL OR chunk_kind = ANY(%(chunk_kinds)s))
             -- The indexed expression, applied to the same column with the same
@@ -433,14 +410,13 @@ def _search_sql(dimension: int) -> str:
 
 
 _SOURCE_UPSERT = """
-    INSERT INTO sources (source_id, category, title, visibility,
+    INSERT INTO sources (source_id, category, title,
                          artifact_uri, artifact_format, artifact_hash, parser)
-    VALUES (%(source_id)s, %(category)s, %(title)s, %(visibility)s,
+    VALUES (%(source_id)s, %(category)s, %(title)s,
             %(artifact_uri)s, %(artifact_format)s, %(artifact_hash)s, %(parser)s)
     ON CONFLICT (source_id) DO UPDATE SET
         category        = EXCLUDED.category,
         title           = EXCLUDED.title,
-        visibility      = EXCLUDED.visibility,
         artifact_uri    = EXCLUDED.artifact_uri,
         artifact_format = EXCLUDED.artifact_format,
         artifact_hash   = EXCLUDED.artifact_hash,

@@ -77,11 +77,13 @@ In your own code it is three lines, and `search.py` is only a wrapper around the
 
 ```python
 with Store(dsn, embedder=BlabladorEmbedder.from_env()) as store:
-    result = store.search("your question", visibility=["public"], n=5)
+    result = store.search("your question", n=5)
 ```
 
-`visibility` is required and has no default — a store that guesses which levels a caller
-may see guesses generously exactly once.
+There is no permission argument, and no permission column. Every source in this corpus is
+public open-source code, and a `visibility` field that never varies is not access control —
+it is a name the next reader trusts by mistake. What it would take to bring back is recorded
+in plan 02.
 
 ## What it produced
 
@@ -212,7 +214,7 @@ uri=…)` means *"remove one file's chunks from a source"*.
 
 **Any change re-ingests the whole repository — a choice, not a constraint.** `Store` supports
 the other way: `delete_chunks(source_id, uri=…)` and `upsert_chunks` exist precisely for
-*"one file of many changed"*, and search filters on visibility, source, category and kind but
+*"one file of many changed"*, and search filters on source, category and kind but
 **never on revision**, so chunks of mixed revisions would all stay findable.
 
 What made it not worth it here is that `chunk_id` hashes the revision, so the commit sha is

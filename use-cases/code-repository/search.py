@@ -14,11 +14,6 @@ import textwrap
 
 from dotenv import load_dotenv
 
-#: What a caller of this script is entitled to see. Everything ingested by
-#: `ingest.py` is public, and `search` refuses an empty visibility rather than
-#: guessing -- so it is spelled out here too.
-VISIBILITY = ["public"]
-
 
 def describe(hit) -> str:
     """One line naming where a hit came from: file, line, and what encloses it.
@@ -74,7 +69,6 @@ def main() -> int:
     with Store(dsn, embedder=BlabladorEmbedder.from_env()) as store:
         result = store.search(
             arguments.query,
-            visibility=VISIBILITY,
             sources=arguments.source,
             chunk_kinds=["code_block"] if arguments.code_only else None,
             n=arguments.n,

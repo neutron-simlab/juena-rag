@@ -40,11 +40,24 @@ embed = [
     "openai>=1.68.0",
     "tokenizers>=0.20",
 ]
-# Run the HTTP service.
+# Talk to the service instead of to the database. This is what a *consumer*
+# installs -- the schema and one HTTP client, with no psycopg, no pgvector and no
+# openai anywhere near it, which is most of the reason the service exists.
+client = [
+    "httpx>=0.27",
+]
+# Run the HTTP service. It reaches the database and embeds the question
+# server-side, so this pulls the other extras in rather than leaving a deployment
+# to remember them -- `client` included, because the shared test suite runs both
+# halves against each other.
 serve = [
+    "juena-rag[store,embed,client]",
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
 ]
+
+[project.scripts]
+juena-rag = "juena_rag.service.cli:main"
 
 [dependency-groups]
 dev = [
@@ -59,6 +72,13 @@ dev = [
     # So `.env` is enough to run the tests that need a key or a database. Nothing
     # in the package itself reads a file; only the test run does.
     "python-dotenv>=1.0",
+    # The service, so `tests/test_service.py` is import-checked by the test run and
+    # `uv run juena-rag serve` works from a clone. `httpx` is what FastAPI's
+    # TestClient is built on; it arrives as somebody else's dependency today, and a
+    # test suite should not rest on that.
+    "fastapi>=0.104.0",
+    "httpx>=0.27",
+    "uvicorn[standard]>=0.24.0",
 ]
 # What the worked pipelines in `use-cases/` need, and nothing in the package does:
 # a code chunker, a text splitter and a YAML parser. Its own group rather than an

@@ -5,13 +5,27 @@ driver at all -- it renders SQL and takes a connection somebody else opened::
 
     from juena_rag.store import apply_ddl, render_ddl  # always works
 
-``pgvector.py`` is the exception and is deliberately **not** imported here: it
-needs the ``[store]`` extra, and this module must keep working on the base
-install. Reach for it by name::
+The two client modules are the exception and are deliberately **not** imported
+here: each needs an extra, and this module must keep working on the base install.
+Reach for them by name::
 
-    from juena_rag.store.pgvector import Store   # needs [store]
+    from juena_rag.store.pgvector import Store       # needs [store]
+    from juena_rag.store.http import HttpStore       # needs [client]
+
+What they share -- the errors, ``StoreStatus`` and the ``ReadableStore`` contract
+-- is in ``base``, which needs neither.
 """
 
+from juena_rag.store.base import (
+    API_PREFIX,
+    DEFAULT_K,
+    DEFAULT_N,
+    DimensionMismatch,
+    ReadableStore,
+    SourceNotFound,
+    StoreError,
+    StoreStatus,
+)
 from juena_rag.store.rows import (
     CHUNK_INSERT_COLUMNS,
     chunk_extra,
@@ -31,11 +45,19 @@ from juena_rag.store.schema import (
 )
 
 __all__ = [
+    "API_PREFIX",
     "CHUNK_INSERT_COLUMNS",
+    "DEFAULT_K",
+    "DEFAULT_N",
     "DIMENSION_PLACEHOLDER",
     "MAX_DIMENSION",
+    "DimensionMismatch",
+    "ReadableStore",
     "SchemaAlreadyApplied",
     "SchemaError",
+    "SourceNotFound",
+    "StoreError",
+    "StoreStatus",
     "VectorExtensionMissing",
     "apply_ddl",
     "chunk_extra",

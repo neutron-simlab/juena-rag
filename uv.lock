@@ -622,12 +622,20 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+client = [
+    { name = "httpx" },
+]
 embed = [
     { name = "openai" },
     { name = "tokenizers" },
 ]
 serve = [
     { name = "fastapi" },
+    { name = "httpx" },
+    { name = "openai" },
+    { name = "pgvector" },
+    { name = "psycopg", extra = ["binary", "pool"] },
+    { name = "tokenizers" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 store = [
@@ -637,12 +645,15 @@ store = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "fastapi" },
+    { name = "httpx" },
     { name = "openai" },
     { name = "pgvector" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pytest" },
     { name = "python-dotenv" },
     { name = "tokenizers" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 use-cases = [
     { name = "chonkie", extra = ["code"] },
@@ -653,6 +664,8 @@ use-cases = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", marker = "extra == 'serve'", specifier = ">=0.104.0" },
+    { name = "httpx", marker = "extra == 'client'", specifier = ">=0.27" },
+    { name = "juena-rag", extras = ["store", "embed", "client"], marker = "extra == 'serve'" },
     { name = "openai", marker = "extra == 'embed'", specifier = ">=1.68.0" },
     { name = "pgvector", marker = "extra == 'store'", specifier = ">=0.3.6" },
     { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'store'", specifier = "==3.3.4" },
@@ -662,16 +675,19 @@ requires-dist = [
     { name = "tree-sitter-language-pack", specifier = ">=0.7" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'serve'", specifier = ">=0.24.0" },
 ]
-provides-extras = ["store", "embed", "serve"]
+provides-extras = ["store", "embed", "client", "serve"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "fastapi", specifier = ">=0.104.0" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "openai", specifier = ">=1.68.0" },
     { name = "pgvector", specifier = ">=0.3.6" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.4" },
     { name = "pytest", specifier = ">=8.4.2" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "tokenizers", specifier = ">=0.20" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
 ]
 use-cases = [
     { name = "chonkie", extras = ["code"], specifier = "==1.6.1" },

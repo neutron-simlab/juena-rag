@@ -16,48 +16,23 @@ from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg.types.json import Json
 from psycopg_pool import ConnectionPool
-from pydantic import BaseModel
 
 from juena_rag.embedding.base import Embedder
 from juena_rag.schema.boundary import ChunkBatch
 from juena_rag.schema.models import SearchHit, SearchResult, SourceMetadata, SourceRow
+from juena_rag.store.base import (
+    DEFAULT_K,
+    DEFAULT_N,
+    DimensionMismatch,
+    SourceNotFound,
+    StoreError,
+    StoreStatus,
+)
 from juena_rag.store.rows import CHUNK_INSERT_COLUMNS, chunk_rows, source_row
-
-#: How many candidates the index retrieves, and how many survive to the caller.
-#: Measured over a million rows: k=100 gives 96.4% recall@10, k=200 gives 99.2%,
-#: and above 200 the curve stops paying. Today's corpus is ~10k, where k=100 is
-#: ~99.8% -- so this is a floor to raise as the corpus grows, not a ceiling.
-DEFAULT_K = 100
-DEFAULT_N = 5
-
-
-class StoreError(Exception):
-    """Base class, so a caller can catch everything this layer raises."""
-
-
-class DimensionMismatch(StoreError):
-    """The table's vector column is not as wide as the embedder's vectors."""
-
-
-class SourceNotFound(StoreError):
-    """A write named a source that has to exist first."""
-
-
-class StoreStatus(BaseModel):
-    """What a readiness check reports. Plan 02 serialises this out of ``/status``."""
-
-    dimension: int
-    sources: int
-    chunks: int
-
-    #: Every distinct ``embedding_model`` in the table. More than one means two
-    #: sources were embedded by different models, whose vectors are not comparable
-    #: -- search would mix them and rank the result as if it meant something.
-    embedding_models: list[str]
 
 
 class Store:
-    """The pgvector-backed store: one pool, one embedder, nine methods.
+    """The pgvector-backed store: one pool, one embedder, ten methods.
 
     Opens its own connection pool from ``dsn`` and configures each connection once
     -- the pgvector type adapters, and the iterative-scan setting a filtered vector
@@ -341,6 +316,16 @@ class Store:
             )
             row = cursor.fetchone()
         return SourceRow.model_validate(row) if row else None
+
+    def ping(self) -> None:
+        """Reach the database and come straight back. Raises if it cannot.
+
+        What a readiness probe means, and deliberately not :meth:`status`: that
+        one counts and de-duplicates over every chunk, which is 25 ms and a
+        sequential scan on the live corpus against 0.6 ms for this.
+        """
+        with self._pool.connection() as connection:
+            connection.execute("SELECT 1")
 
     def status(self) -> StoreStatus:
         """Readiness, and the one inconsistency worth reporting.

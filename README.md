@@ -11,8 +11,9 @@ function, subroutine or section a given line sits inside. That answer is identic
 pipeline that will ever read Fortran, and getting it wrong is visible in every citation the
 corpus produces, so it belongs here rather than in each caller.
 
-> Early scaffolding. The contract below is the agreed direction; almost none of it is
-> implemented yet.
+> The schema, the store, the read-only HTTP service and its client are built and
+> carry a real corpus. What the contract below still describes ahead of the code is
+> the deployment; see [Status](#status).
 
 ## The boundary
 
@@ -94,6 +95,59 @@ lockstep across every consumer, hands each of them the embedding API key, and re
 API contract with a table layout that nobody can change afterwards. The
 `[store]` extra exists for this service and for ingestion pipelines, not for consumers.
 
+### Running the service
+
+```bash
+set -a; source .env; set +a           # JUENA_RAG_DSN, and a key for [embed]
+uv run juena-rag serve --port 8000    # --host 0.0.0.0 in a container
+```
+
+It opens one `Store` at startup and refuses to start unless both widths agree: the
+model has to return vectors of the configured size, and the `embedding` column has
+to be that wide. Five endpoints, each of them one call to a `Store` method:
+
+| | |
+| --- | --- |
+| `POST /v1/search` | the question and its filters, in the body |
+| `GET /v1/sources` | the catalogue |
+| `GET /v1/sources/{id}/structure?revision=…` | one document, and **only** at a revision you name |
+| `GET /v1/status` | what is stored — scans the table, so not a probe |
+| `GET /v1/health` | can this pod reach the database |
+
+```bash
+curl -s localhost:8000/v1/search -H 'content-type: application/json' \
+    -d '{"query": "wie berechne ich den Strukturfaktor einer harten Kugel?", "n": 3}'
+```
+
+**Consumers use the client, not the endpoints.** It ships in this package so
+nobody hand-writes a request body against the schema and gets it subtly wrong:
+
+```python
+from juena_rag.store.pgvector import Store  # [store] -- reads and writes
+from juena_rag.store.http import HttpStore  # [client] -- the read half only
+
+store = Store(dsn, embedder=BlabladorEmbedder.from_env())
+store = HttpStore("https://juena-rag.jcns.internal")
+
+result = store.search("how do I fit a form factor to SANS data?", n=5)
+```
+
+Same five read methods, same argument names, same objects back — checked by a
+shared test suite that runs every read against both. `HttpStore` has none of the
+five writing methods, and the suite asserts their absence too.
+
+**Reads only, and pointers only.** The five writing methods have no endpoint at
+all — ingestion opens the database directly, as a job — and a hit carries its own
+text plus where that text came from, never the original file. `git show
+<sha>:<path>` resolves the pointer, and the sha the hit already carries is what
+keeps the two in step.
+
+Two more settings, both optional: `JUENA_RAG_POOL_MAX_SIZE` (4) is how many
+database connections there are, and `JUENA_RAG_MAX_CONCURRENCY` (40) is how many
+requests may be in flight. They are deliberately not equal — a search embeds the
+question *before* it borrows a connection, so the round trip to Blablador occupies
+a thread and no connection.
+
 ## Getting started
 
 Requires [uv](https://docs.astral.sh/uv/).
@@ -103,17 +157,17 @@ git clone <this repo> && cd juena-rag
 uv sync                     # creates .venv, installs deps and the dev group
 cp .env.example .env        # then set POSTGRES_PASSWORD, and a key if you want [embed]
 docker compose up -d        # PostgreSQL 18 with pgvector, on port 5433
-uv run pytest               # 188 tests, 1 skip
+uv run pytest               # 250 tests, 1 skip
 ```
 
 Two things are optional, and each shows up as skips rather than failures:
 
 | | Passes | Skips |
 | --- | ---: | ---: |
-| `uv run pytest` | 188 | 1 |
-| `uv run pytest`, container stopped | 158 | 31 |
-| `uv run --group use-cases pytest` | **204** | 0 |
-| `uv run --group use-cases pytest`, container stopped | 174 | 30 |
+| `uv run pytest` | 250 | 1 |
+| `uv run pytest`, container stopped | 181 | 70 |
+| `uv run --group use-cases pytest` | **266** | 0 |
+| `uv run --group use-cases pytest`, container stopped | 197 | 69 |
 
 An unreachable `JUENA_RAG_TEST_DSN` is treated the same as an unset one, so the database
 tests skip on a plane. Each of them works in its own throwaway schema and drops it
@@ -133,7 +187,8 @@ Extras, so a pipeline author installs only what they need:
 | `pip install juena-rag` | the schema alone — enough to write an ingestion pipeline |
 | `pip install juena-rag[store]` | pgvector access (psycopg, pgvector) |
 | `pip install juena-rag[embed]` | the Blablador embedding client (openai, tokenizers) |
-| `pip install juena-rag[serve]` | the HTTP service (FastAPI, uvicorn) |
+| `pip install juena-rag[client]` | `HttpStore` — search the service over HTTP (httpx) |
+| `pip install juena-rag[serve]` | the HTTP service — FastAPI and uvicorn, **and the two extras above**, since it is the thing that reaches the database and embeds the question |
 
 `[embed]` is separate from `[store]` on purpose: a store handed an embedder needs no
 network stack of its own. The `Embedder` protocol and its checks are in the base
@@ -159,7 +214,7 @@ job is measurable rather than guessed at:
 
 ```python
 embedder = BlabladorEmbedder.from_env()
-tokens = ModelTokenCounter()          # or ModelTokenCounter("path/to/tokenizer.json")
+tokens = ModelTokenCounter()  # or ModelTokenCounter("path/to/tokenizer.json")
 
 counts = tokens.count_many([chunk.text for chunk in chunks])
 too_big = [c for c, n in zip(chunks, counts) if n > embedder.metadata.max_input_tokens]
@@ -177,7 +232,9 @@ src/juena_rag/
 │                  all returning the same shape
 ├── embedding/     turning text into vectors; the parts that need a network
 │                  (the client, the vocabulary) are behind [embed]
-└── store/         storage backends, and the SQL schema in ddl.sql
+├── store/         base.py is the read contract and the errors, and needs no driver;
+│                  pgvector.py is [store], http.py is [client], ddl.sql is the table
+└── service/       the HTTP service -- five endpoints and `juena-rag serve`, [serve]
 deploy/kube/       the deployed database: a CloudNativePG cluster,
                    one base and a `vm` overlay for the single node
 docker-compose.yml the local one, for tests
@@ -209,11 +266,12 @@ Two things to know before touching the schema:
 
 | | |
 | --- | --- |
-| Schema | built — models, registry, validation rules, 204 tests |
+| Schema | built — models, registry, validation rules, 76 tests |
 | Parsers | built — Python via `ast`; Fortran, C, C++ and LaTeX via tree-sitter |
 | Embedder | built — Blablador client, token counting, dimension pinned at 4096 |
 | pgvector store | built — `Store` with a two-stage search and an atomic source replace |
 | Local database | built — `docker compose up -d` |
 | Deployed database | built — CloudNativePG, verified on a real cluster; the OpenShift arbitrary-UID question is still open |
-| HTTP service | not started |
+| HTTP service | built — five read endpoints under `/v1`, `juena-rag serve`, no write side |
+| The client | built — `HttpStore`, the same five methods over HTTP; a shared suite runs every read against both |
 | Ingestion pipelines | out of scope by design — but [`use-cases/code-repository/`](use-cases/code-repository/) is one worked example, and eight repositories and 38,477 chunks are the corpus it now holds |

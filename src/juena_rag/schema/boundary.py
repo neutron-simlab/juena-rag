@@ -1,13 +1,15 @@
-"""What crosses into the store: one source and its chunks, in one object.
+"""What crosses into the store from outside: a batch going in, a query coming to it.
 
 :class:`ChunkBatch` is the only thing an ingestion pipeline has to build, and it
 is where the four rules needing to see *both* are checked -- a chunk cannot tell
-on its own whether its source names an artifact.
+on its own whether its source names an artifact. :class:`SearchRequest` is the
+other direction and much smaller: the arguments of ``Store.search``, as an object,
+because over HTTP they arrive as somebody else's JSON.
 """
 
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, SerializeAsAny, model_validator
+from pydantic import BaseModel, Field, SerializeAsAny, model_validator
 
 from juena_rag.schema.models import Chunk, SourceMetadata
 from juena_rag.schema.registry import chunk_class, parse_chunk
@@ -120,3 +122,29 @@ class ChunkBatch(BaseModel):
                 )
 
         return self
+
+
+class SearchRequest(BaseModel):
+    """One question and the filters to ask it under -- the body of ``POST /v1/search``.
+
+    Every field is named for the ``Store.search`` argument it becomes, so the JSON
+    and the Python call read the same. Defined here rather than in the service so
+    that ``HttpStore`` can build one without installing a web framework.
+    """
+
+    # A misspelled filter is refused rather than dropped. Without this, `{"source":
+    # ["vitess"]}` -- singular, which is the natural typo -- would search the whole
+    # corpus and return a plausible answer with no filter applied and no error.
+    model_config = {"extra": "forbid"}
+
+    query: str = Field(min_length=1)
+
+    sources: list[str] | None = None
+    categories: list[str] | None = None
+    chunk_kinds: list[str] | None = None
+
+    #: How many candidates the index retrieves, and how many survive to the caller.
+    #: Left unset, the service's own defaults apply -- a caller does not have to
+    #: know them, and cannot be given a stale copy of them.
+    k: int | None = Field(default=None, gt=0)
+    n: int | None = Field(default=None, gt=0)

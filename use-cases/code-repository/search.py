@@ -21,16 +21,17 @@ VISIBILITY = ["public"]
 
 
 def describe(hit) -> str:
-    """One line naming where a hit came from: file, line, and enclosing symbol.
+    """One line naming where a hit came from: file, line, and what encloses it.
 
-    ``start_line``, ``symbol`` and ``is_doc`` live in ``extra`` rather than in
-    columns -- they are ``CodeChunk``'s fields, not every chunk's.
+    Code names the definition it sits in; prose names the headings above it. Both
+    live in ``extra`` rather than in columns -- they belong to some categories of
+    chunk, not to every chunk.
     """
     where = f"{hit.source_uri}:{hit.extra.get('start_line', '?')}"
-    symbol = hit.extra.get("symbol")
+    context = hit.extra.get("symbol") or " > ".join(hit.extra.get("heading_path") or [])
     return (
         f"{hit.distance:.3f}  {where}"
-        + (f"  [{symbol}]" if symbol else "")
+        + (f"  [{context}]" if context else "")
         + ("  (doc)" if hit.extra.get("is_doc") else "")
     )
 

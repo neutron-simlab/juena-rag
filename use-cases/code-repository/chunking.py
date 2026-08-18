@@ -7,12 +7,12 @@ type and four fields the chatbot never filled -- the line range, the enclosing
 symbol, ``chunk_kind`` and a working ``is_doc``.
 """
 
-import ast
 from pathlib import Path
 from typing import Any
 
 from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
 
+from juena_rag.parsers import Definition, enclosing, outline
 from juena_rag.schema.registry import CodeChunk
 
 try:
@@ -45,14 +45,18 @@ LANGUAGE_BY_EXTENSION = {
     ".f90": "fortran",
     ".F90": "fortran",
     ".inc": "fortran",
+    ".tex": "latex",
 }
 
 #: Languages chonkie can parse. Everything else goes through the recursive
-#: splitter below.
-_CHONKIE_LANGUAGES = {"python", "markdown"}
+#: splitter below. Fortran and LaTeX are here because `chonkie[code]` already
+#: carries their tree-sitter grammars -- adding them cost a set entry, not a
+#: dependency.
+_CHONKIE_LANGUAGES = {"python", "markdown", "fortran", "latex"}
 
-#: Languages langchain ships syntax-aware separators for. Fortran has no
-#: ``Language`` member, so it splits on blank lines like anything unlisted.
+#: Languages langchain ships syntax-aware separators for, used only when chonkie
+#: has no grammar or its parse comes back empty. Fortran has no ``Language``
+#: member, so it would split on blank lines -- which is why it goes to chonkie.
 _LANGCHAIN_LANGUAGES = {
     "python": Language.PYTHON,
     "markdown": Language.MARKDOWN,
@@ -67,7 +71,7 @@ _LANGCHAIN_LANGUAGES = {
 #: different questions. ``is_doc`` is *where the file lives* -- a config decision
 #: about the documentation tree -- and ``chunk_kind`` is *what the text is*. A
 #: README outside the docs tree is still prose.
-_PROSE_LANGUAGES = {"markdown", "rst", "text"}
+_PROSE_LANGUAGES = {"markdown", "rst", "text", "latex"}
 
 
 def detect_language(rel_path: str) -> str:
@@ -178,45 +182,16 @@ def _cap_oversized(
 # --------------------------------------------------------------------------- #
 
 
-def python_symbols(source: str) -> list[tuple[int, int, str]]:
-    """Every ``def`` and ``class`` as ``(first line, last line, dotted name)``.
-
-    In source order, so a nested definition always follows the one containing it.
-    A file that does not parse yields nothing rather than raising -- a syntax error
-    in one file of two hundred should cost that file its symbols, not the ingest.
-    """
-    try:
-        tree = ast.parse(source)
-    except (SyntaxError, ValueError):
-        return []
-
-    found: list[tuple[int, int, str]] = []
-
-    def walk(node: ast.AST, prefix: str) -> None:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                name = prefix + child.name
-                found.append((child.lineno, child.end_lineno or child.lineno, name))
-                walk(child, name + ".")
-            else:
-                walk(child, prefix)
-
-    walk(tree, "")
-    return found
+def _dotted(definitions: list[Definition], first: int, last: int) -> str | None:
+    """The chain enclosing the whole chunk as one name -- ``"FormFactor.sphere"``."""
+    found = enclosing(definitions, first, last)
+    return None if found is None else found.dotted
 
 
-def symbol_at(symbols: list[tuple[int, int, str]], line: int) -> str | None:
-    """The innermost definition containing ``line``, or ``None`` outside them all.
-
-    The *last* match wins, which is the innermost one: :func:`python_symbols`
-    returns source order, and a nested definition is always listed after the one
-    it sits inside.
-    """
-    enclosing = None
-    for first, last, name in symbols:
-        if first <= line <= last:
-            enclosing = name
-    return enclosing
+def _headings(definitions: list[Definition], first: int, last: int) -> list[str]:
+    """The chain enclosing the whole chunk as a list -- ``["Fitting", "Least squares"]``."""
+    found = enclosing(definitions, first, last)
+    return [] if found is None else list(found.path)
 
 
 def line_of(source: str, offset: int) -> int:
@@ -258,8 +233,11 @@ def chunk_file(
     else:
         pieces = _recursive_split(source, language, chunk_size, chunk_overlap)
 
-    symbols = python_symbols(source) if language == "python" else []
+    definitions = outline(language, source)
     kind = "text" if language in _PROSE_LANGUAGES else "code_block"
+    # A LaTeX heading is not a definition, so it belongs in the field meant for a
+    # document's structure. Everything else names the code it sits inside.
+    as_heading = language == "latex"
 
     chunks: list[CodeChunk] = []
     for piece in pieces:
@@ -272,6 +250,7 @@ def chunk_file(
         start_index = piece.get("start_index", 0)
         end_index = piece.get("end_index", start_index + len(piece["text"]))
         start_line = line_of(source, start_index)
+        end_line = line_of(source, max(end_index - 1, start_index))
 
         chunks.append(
             CodeChunk(
@@ -283,12 +262,17 @@ def chunk_file(
                 # `end_index` points one past the last character, so a chunk ending
                 # in a newline would otherwise claim the line after itself.
                 start_line=start_line,
-                end_line=line_of(source, max(end_index - 1, start_index)),
+                end_line=end_line,
                 start_index=start_index,
                 end_index=end_index,
-                # Named for the definition the chunk *starts* in. A chunk can span
-                # two functions; naming the first is the honest simple answer.
-                symbol=symbol_at(symbols, start_line),
+                # Named for what encloses the chunk *entirely*, not for what its
+                # first line happens to sit in -- see `enclosing`.
+                symbol=None
+                if as_heading
+                else _dotted(definitions, start_line, end_line),
+                heading_path=(
+                    _headings(definitions, start_line, end_line) if as_heading else []
+                ),
             )
         )
 

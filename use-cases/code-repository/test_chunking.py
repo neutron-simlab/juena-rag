@@ -13,8 +13,6 @@ from chunking import (  # imported below the skip, deliberately
     chunk_file,
     detect_language,
     line_of,
-    python_symbols,
-    symbol_at,
 )
 
 SOURCE = '''"""A module."""
@@ -41,6 +39,9 @@ class FormFactor:
 def test_the_extension_decides_the_language():
     assert detect_language("src/jscatter/formel.py") == "python"
     assert detect_language("doc/source/sas.rst") == "rst"
+    assert detect_language("src/dtr/fit.f90") == "fortran"
+    # Absent from the table until datreat's manual turned up chunked as source.
+    assert detect_language("doc/NewManualBook/ManualDtr.tex") == "latex"
     assert detect_language("Makefile") == "other"
 
 
@@ -67,27 +68,6 @@ def test_is_doc_is_carried_from_the_caller_not_guessed():
 # --------------------------------------------------------------------------- #
 
 
-def test_symbols_are_found_in_source_order_with_dotted_names():
-    assert python_symbols(SOURCE) == [
-        (4, 6, "scattering_length"),
-        (9, 13, "FormFactor"),
-        (12, 13, "FormFactor.sphere"),
-    ]
-
-
-def test_the_innermost_definition_wins():
-    """A method's lines are also its class's lines; the method is the useful answer."""
-    symbols = python_symbols(SOURCE)
-    assert symbol_at(symbols, 13) == "FormFactor.sphere"
-    assert symbol_at(symbols, 10) == "FormFactor"
-    assert symbol_at(symbols, 1) is None
-
-
-def test_a_file_that_does_not_parse_yields_no_symbols_rather_than_raising():
-    """One unparseable file of two hundred should cost that file, not the ingest."""
-    assert python_symbols("def broken(:\n    pass\n") == []
-
-
 def test_a_chunk_is_named_for_the_definition_it_starts_in():
     """Small `chunk_size` on purpose, so the file splits and a chunk starts inside.
 
@@ -112,9 +92,38 @@ def test_a_chunk_starting_above_the_first_definition_has_no_symbol():
     assert chunks[0].symbol is None
 
 
-def test_only_python_is_asked_for_symbols():
+def test_a_language_with_no_parser_yields_no_symbols():
+    """reStructuredText has no grammar here, so text that looks like code is text."""
     chunks = chunk_file("Heading\n=======\n\ndef looks_like_python():\n", "a.rst")
     assert all(chunk.symbol is None for chunk in chunks)
+
+
+def test_a_fortran_chunk_is_named_for_its_subroutine():
+    """The whole of datreat depends on this: 98% Fortran, and `ast` cannot read it."""
+    source = (
+        "      subroutine formfactor(q, r, f)\n"
+        + "".join(f"      x{n} = {n}\n" for n in range(200))
+        + "      end subroutine formfactor\n"
+    )
+    chunks = chunk_file(source, "src/ff.f90", chunk_size=400)
+    assert {chunk.symbol for chunk in chunks} == {"formfactor"}
+
+
+def test_latex_is_prose_carrying_a_heading_path_rather_than_a_symbol():
+    """Two separate mistakes it used to make: labelled `code_block`, and unstructured.
+
+    `chunk_kind` decides whether `--code-only` returns the manual, and a heading is
+    a document's structure -- `symbol` is for a definition, which a section is not.
+    """
+    source = (
+        "\\chapter{Data Treatment}\n"
+        + "\\section{Fitting}\n"
+        + "".join(f"Line {n} of the manual.\n" for n in range(200))
+    )
+    chunks = chunk_file(source, "doc/manual.tex")
+    assert {chunk.chunk_kind for chunk in chunks} == {"text"}
+    assert all(chunk.symbol is None for chunk in chunks)
+    assert any(chunk.heading_path == ["Data Treatment", "Fitting"] for chunk in chunks)
 
 
 # --------------------------------------------------------------------------- #

@@ -256,6 +256,13 @@ class SourceRow(BaseModel):
     artifact_hash: str | None = None
     parser: str | None = None
 
+    #: How many chunks this source currently has stored. Counted per read rather
+    #: than kept as a column, so it cannot drift from the table it describes;
+    #: `source_id` is the leading column of `chunks_revision_idx`, so it is an
+    #: index-only aggregate. Zero means registered but never ingested -- which is
+    #: what a caller asking "is this searchable?" needs to tell apart from absent.
+    chunk_count: int = 0
+
     updated_at: datetime
 
 

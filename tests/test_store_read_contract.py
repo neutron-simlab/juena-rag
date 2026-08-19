@@ -162,6 +162,41 @@ def test_the_catalogue_lists_every_source(any_store, store):
     assert {source.source_id for source in any_store.list_sources()} == {"one", "two"}
 
 
+def test_the_catalogue_reports_how_many_chunks_each_source_has(any_store, store):
+    """The question a caller asks to decide whether a source is worth searching."""
+    store.replace_source(a_batch("alpha", "beta", "gamma", source_id="one"))
+    store.replace_source(a_batch("delta", source_id="two"))
+
+    counts = {
+        source.source_id: source.chunk_count for source in any_store.list_sources()
+    }
+
+    assert counts == {"one": 3, "two": 1}
+
+
+def test_a_registered_source_with_no_chunks_reports_zero(any_store, store):
+    """Zero and absent are different answers, and a caller acts on the difference."""
+    store.register_source(a_source(source_id="declared-only"))
+
+    listed = {
+        source.source_id: source.chunk_count for source in any_store.list_sources()
+    }
+
+    assert listed["declared-only"] == 0
+
+
+def test_replacing_a_source_recounts_rather_than_accumulates(any_store, store):
+    """A stored count would drift here; a counted one cannot."""
+    store.replace_source(a_batch("alpha", "beta", "gamma", revision="v3"))
+    store.replace_source(a_batch("only one now", revision="v4"))
+
+    listed = {
+        source.source_id: source.chunk_count for source in any_store.list_sources()
+    }
+
+    assert listed["kws1-manual"] == 1
+
+
 def test_a_structure_at_the_active_revision_is_the_document(any_store, store):
     store.replace_source(a_batch("alpha", revision="v3"))
 
@@ -169,6 +204,7 @@ def test_a_structure_at_the_active_revision_is_the_document(any_store, store):
 
     assert found is not None
     assert found.active_revision == "v3"
+    assert found.chunk_count == 1
 
 
 def test_a_structure_at_a_superseded_revision_is_nothing(any_store, store):

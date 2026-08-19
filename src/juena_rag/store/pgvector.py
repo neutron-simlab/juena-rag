@@ -288,7 +288,13 @@ class Store:
             self._pool.connection() as connection,
             connection.cursor(row_factory=dict_row) as cursor,
         ):
-            cursor.execute("SELECT * FROM sources ORDER BY updated_at DESC, source_id")
+            cursor.execute(
+                "SELECT s.*, "
+                "  (SELECT count(*) FROM chunks WHERE source_id = s.source_id) "
+                "    AS chunk_count "
+                "FROM sources s "
+                "ORDER BY s.updated_at DESC, s.source_id"
+            )
             return [SourceRow.model_validate(row) for row in cursor.fetchall()]
 
     def get_structure(
@@ -308,10 +314,13 @@ class Store:
             connection.cursor(row_factory=dict_row) as cursor,
         ):
             cursor.execute(
-                "SELECT * FROM sources "
-                "WHERE source_id = %(source_id)s "
+                "SELECT s.*, "
+                "  (SELECT count(*) FROM chunks WHERE source_id = s.source_id) "
+                "    AS chunk_count "
+                "FROM sources s "
+                "WHERE s.source_id = %(source_id)s "
                 "  AND (%(revision)s::text IS NULL "
-                "       OR active_revision = %(revision)s)",
+                "       OR s.active_revision = %(revision)s)",
                 {"source_id": source_id, "revision": revision},
             )
             row = cursor.fetchone()

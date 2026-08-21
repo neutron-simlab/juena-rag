@@ -200,7 +200,7 @@ vocabulary — sit behind the extra.
 | Variable | Default |
 | --- | --- |
 | `BLABLADOR_API_KEY` | — |
-| `BLABLADOR_BASE_URL` | `https://api.helmholtz-blablador.fz-juelich.de/v1` |
+| `BLABLADOR_BASE_URL` | `https://api.blablador.fz-juelich.de/v1` |
 | `BLABLADOR_EMBEDDING_MODEL` | `alias-qwen3-8b-embeddings` |
 | `BLABLADOR_EMBEDDING_DIMENSION` | `4096` |
 | `BLABLADOR_EMBEDDING_MAX_INPUT_TOKENS` | `8192` |

@@ -157,17 +157,17 @@ git clone <this repo> && cd juena-rag
 uv sync                     # creates .venv, installs deps and the dev group
 cp .env.example .env        # then set POSTGRES_PASSWORD, and a key if you want [embed]
 docker compose up -d        # PostgreSQL 18 with pgvector, on port 5433
-uv run pytest               # 250 tests, 1 skip
+uv run pytest               # 256 tests, 1 skip
 ```
 
 Two things are optional, and each shows up as skips rather than failures:
 
 | | Passes | Skips |
 | --- | ---: | ---: |
-| `uv run pytest` | 250 | 1 |
-| `uv run pytest`, container stopped | 181 | 70 |
-| `uv run --group use-cases pytest` | **266** | 0 |
-| `uv run --group use-cases pytest`, container stopped | 197 | 69 |
+| `uv run pytest` | 256 | 1 |
+| `uv run pytest`, container stopped | 181 | 76 |
+| `uv run --group use-cases pytest` | **272** | 0 |
+| `uv run --group use-cases pytest`, container stopped | 197 | 75 |
 
 An unreachable `JUENA_RAG_TEST_DSN` is treated the same as an unset one, so the database
 tests skip on a plane. Each of them works in its own throwaway schema and drops it

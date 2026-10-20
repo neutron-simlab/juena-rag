@@ -87,9 +87,6 @@ in plan 02.
 
 ## What it produced
 
-Two repositories, on a laptop. jscatter is ingested; datreat is measured but not yet
-embedded:
-
 Eight repositories, at `chunk_size: 3000` — [measured, not
 inherited](#how-big-should-a-chunk-be). `sampledb` is the ninth in the chatbot's config and
 is deliberately not here.

@@ -79,12 +79,14 @@ class HttpStore:
         chunk_kinds: Sequence[str] | None = None,
         k: int | None = None,
         n: int | None = None,
+        rerank: bool = False,
     ) -> SearchResult:
         """Find the ``n`` chunks closest to ``query``, among ``k`` the index retrieved.
 
         The filters are checked here before the request is sent, because
         :class:`~juena_rag.schema.boundary.SearchRequest` is the same object the
-        service validates -- a typo fails in the caller's own traceback.
+        service validates -- a typo fails in the caller's own traceback. With
+        ``rerank``, the service's reranking model re-orders the closest candidates.
         """
         request = SearchRequest(
             query=query,
@@ -93,6 +95,7 @@ class HttpStore:
             chunk_kinds=list(chunk_kinds) if chunk_kinds is not None else None,
             k=k,
             n=n,
+            rerank=rerank,
         )
         return SearchResult.model_validate(
             self._read("POST", "/search", json=request.model_dump())

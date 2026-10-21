@@ -11,6 +11,12 @@ function, subroutine or section a given line sits inside. That answer is identic
 pipeline that will ever read Fortran, and getting it wrong is visible in every citation the
 corpus produces, so it belongs here rather than in each caller.
 
+**A second one:** git repositories. `juena-rag ingest-repo`, behind the `[ingest]` extra,
+clones a repository, splits it and stores it as one source, because two applications index
+code and both would otherwise copy the same script. Where a chunk ends is still the
+caller's decision: its own `repositories.yaml` sets `chunk_size` and `chunk_overlap`, and
+juena-rag has no default to fall back on.
+
 > The schema, the store, the read-only HTTP service and its client are built and
 > carry a real corpus. What the contract below still describes ahead of the code is
 > the deployment; see [Status](#status).
@@ -132,6 +138,15 @@ store = HttpStore("https://juena-rag.jcns.internal")
 result = store.search("how do I fit a form factor to SANS data?", n=5)
 ```
 
+**Reranking, when a search asks for it.** `search(..., rerank=True)` takes the 20
+closest chunks by vector distance, has a reranking model read each one together with the
+question, and returns its best `n`. Each hit keeps its `distance` and gains a
+`rerank_score` (larger is better, on the model's own scale), and the result names the
+model in `reranked_by`. The service reranks with Blablador's Qwen3-Reranker
+(`BLABLADOR_RERANK_MODEL`, default `alias-qwen3-4b-reranking`) and re-reads
+`JUENA_RAG_RERANK_CANDIDATES` chunks (20). That alias is experimental, so when it cannot
+answer the search still does, in vector order, with `rerank_error` saying why.
+
 Same five read methods, same argument names, same objects back — checked by a
 shared test suite that runs every read against both. `HttpStore` has none of the
 five writing methods, and the suite asserts their absence too.
@@ -157,22 +172,22 @@ git clone <this repo> && cd juena-rag
 uv sync                     # creates .venv, installs deps and the dev group
 cp .env.example .env        # then set POSTGRES_PASSWORD, and a key if you want [embed]
 docker compose up -d        # PostgreSQL 18 with pgvector, on port 5433
-uv run pytest               # 250 tests, 1 skip
+uv run pytest               # 273 tests, 1 skip
 ```
 
 Two things are optional, and each shows up as skips rather than failures:
 
 | | Passes | Skips |
 | --- | ---: | ---: |
-| `uv run pytest` | 250 | 1 |
-| `uv run pytest`, container stopped | 181 | 70 |
-| `uv run --group use-cases pytest` | **266** | 0 |
-| `uv run --group use-cases pytest`, container stopped | 197 | 69 |
+| `uv run pytest` | 273 | 1 |
+| `uv run pytest`, container stopped | 190 | 84 |
+| `uv run --extra ingest pytest` | **289** | 0 |
+| `uv run --extra ingest pytest`, container stopped | 206 | 83 |
 
 An unreachable `JUENA_RAG_TEST_DSN` is treated the same as an unset one, so the database
 tests skip on a plane. Each of them works in its own throwaway schema and drops it
-afterwards. The single skip in the first row is the chunking suite in `use-cases/`, which
-needs the optional group that carries a code chunker.
+afterwards. The single skip in the first row is the chunking suite, which needs the
+`[ingest]` extra that carries a code chunker.
 
 The container is a development database and nothing else; it is not the shape anything
 deploys in. See [`deploy/kube/`](deploy/kube/) for that.
@@ -189,6 +204,7 @@ Extras, so a pipeline author installs only what they need:
 | `pip install juena-rag[embed]` | the Blablador embedding client (openai, tokenizers) |
 | `pip install juena-rag[client]` | `HttpStore` — search the service over HTTP (httpx) |
 | `pip install juena-rag[serve]` | the HTTP service — FastAPI and uvicorn, **and the two extras above**, since it is the thing that reaches the database and embeds the question |
+| `pip install juena-rag[ingest]` | `juena-rag ingest-repo` — a code chunker, a text splitter and a YAML reader, plus `[store]` and `[embed]` |
 
 `[embed]` is separate from `[store]` on purpose: a store handed an embedder needs no
 network stack of its own. The `Embedder` protocol and its checks are in the base
@@ -200,7 +216,7 @@ vocabulary — sit behind the extra.
 | Variable | Default |
 | --- | --- |
 | `BLABLADOR_API_KEY` | — |
-| `BLABLADOR_BASE_URL` | `https://api.helmholtz-blablador.fz-juelich.de/v1` |
+| `BLABLADOR_BASE_URL` | `https://api.blablador.fz-juelich.de/v1` |
 | `BLABLADOR_EMBEDDING_MODEL` | `alias-qwen3-8b-embeddings` |
 | `BLABLADOR_EMBEDDING_DIMENSION` | `4096` |
 | `BLABLADOR_EMBEDDING_MAX_INPUT_TOKENS` | `8192` |
@@ -232,14 +248,17 @@ src/juena_rag/
 │                  all returning the same shape
 ├── embedding/     turning text into vectors; the parts that need a network
 │                  (the client, the vocabulary) are behind [embed]
+├── reranking/     the second stage of a search; the Blablador client is [embed]
 ├── store/         base.py is the read contract and the errors, and needs no driver;
 │                  pgvector.py is [store], http.py is [client], ddl.sql is the table
-└── service/       the HTTP service -- five endpoints and `juena-rag serve`, [serve]
+├── ingest/        `juena-rag ingest-repo` -- clone, split, embed, store, [ingest]
+└── service/       the HTTP service -- five endpoints, `juena-rag serve`, and the
+                   command line both subcommands share
 deploy/kube/       the deployed database: a CloudNativePG cluster,
                    one base and a `vm` overlay for the single node
 docker-compose.yml the local one, for tests
-use-cases/         worked ingestion pipelines built *on* the package, not in it --
-                   outside src/ so the base install stays pydantic-only
+use-cases/         juena-rag's own corpus: its repositories.yaml, and search.py
+                   for asking it a question from a clone
 tests/
 ```
 
@@ -274,4 +293,5 @@ Two things to know before touching the schema:
 | Deployed database | built — CloudNativePG, verified on a real cluster; the OpenShift arbitrary-UID question is still open |
 | HTTP service | built — five read endpoints under `/v1`, `juena-rag serve`, no write side |
 | The client | built — `HttpStore`, the same five methods over HTTP; a shared suite runs every read against both |
-| Ingestion pipelines | out of scope by design — but [`use-cases/code-repository/`](use-cases/code-repository/) is one worked example, and eight repositories and 38,477 chunks are the corpus it now holds |
+| Ingestion pipelines | one built — `juena-rag ingest-repo` for git repositories, `[ingest]`; eight repositories and 38,477 chunks are the corpus it holds ([`use-cases/code-repository/`](use-cases/code-repository/)) |
+| Reranker | built — Qwen3-Reranker on Blablador, asked for per search, falling back to vector order. **Not yet measured**, and both Blablador reranking aliases answered 503 when it was built (2026-10-20), so it has not served a live search yet |

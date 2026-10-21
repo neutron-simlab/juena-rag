@@ -2,15 +2,15 @@
 #
 #   cp .env.example .env          # once
 #   docker compose up -d
-#   uv run pytest                 # 188 tests; without the container, 158 and 31 skips
+#   uv run pytest                 # 273 tests, 1 skip; without the container, 190 and 84 skips
 #
 # This is a development database and nothing else. It publishes a port, keeps its
 # data in a volume you can delete, and is not the shape anything is deployed in --
 # the cluster runs CloudNativePG, which is a different file in a different plan.
 #
-# There is no service container here. juena-rag is a library; `juena-rag serve`
-# arrives with the HTTP service in plan 02, and this file grows a second service
-# then.
+# There is no service container here. `juena-rag serve` exists (plan 02), but this
+# repository builds no image for it yet; juena-lab builds and runs its own from
+# juena-lab/deploy/rag/Dockerfile.
 
 services:
   pgvector:

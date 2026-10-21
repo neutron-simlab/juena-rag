@@ -331,9 +331,15 @@ class SearchHit(ChunkRow):
     #: opposite. Deliberately not called ``score``: it is the raw number the
     #: database computed, and inverting it into a similarity would claim the
     #: vectors are unit-length, which is the embedding model's business and not
-    #: something this package can check. The re-ranker in plan 03 adds its own
-    #: field beside this one rather than overwriting it.
+    #: something this package can check. A reranker adds its own field beside
+    #: this one rather than overwriting it.
     distance: float
+
+    #: The reranking model's relevance score, so **larger is more relevant**, on
+    #: that model's own scale. ``None`` when the search was not reranked -- see
+    #: ``SearchResult.reranked_by``. Kept apart from ``distance`` because the two
+    #: numbers mean different things and must never be compared with each other.
+    rerank_score: float | None = None
 
 
 class SearchResult(BaseModel):
@@ -347,6 +353,16 @@ class SearchResult(BaseModel):
 
     sources: list[SourceRow] = Field(default_factory=list)
     hits: list[SearchHit] = Field(default_factory=list)
+
+    #: Which model put ``hits`` in their order. ``None`` means the order is by
+    #: vector distance -- either no reranking was asked for, or it failed and
+    #: ``rerank_error`` says why. Stated on every result, because the order means
+    #: something different in each case.
+    reranked_by: str | None = None
+
+    #: Why a requested rerank did not happen, when it did not. The search still
+    #: answers, in vector-distance order.
+    rerank_error: str | None = None
 
     def source_of(self, hit: SearchHit) -> SourceRow:
         """The document one hit came from.

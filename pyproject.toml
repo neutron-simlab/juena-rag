@@ -55,6 +55,26 @@ serve = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
 ]
+# Run `juena-rag ingest-repo`: clone a repository, chunk it with a code chunker and
+# a text splitter, read the caller's YAML config, then embed and store. Pulls in
+# `store` and `embed` because an ingest does both.
+#
+# Both chunkers are pinned exactly, and that is not caution. Left as `chonkie>=`,
+# uv resolved a newer release that split the identical 170 jscatter files into
+# 4,114 chunks instead of 3,293 -- 25% more, entirely in `.py`, which is the only
+# extension that reaches chonkie at all. Nothing announced it and nothing failed:
+# the corpus would just have been embedded along different boundaries, at 25% more
+# cost, for a reason nobody could reconstruct afterwards.
+#
+# `langchain-text-splitters` is pinned on principle rather than on evidence --
+# 1.1.1 and 1.1.2 produce byte-identical output here, which is how the difference
+# above was traced to chonkie. It is pinned before it gets the chance to stop.
+ingest = [
+    "juena-rag[store,embed]",
+    "chonkie[code]==1.6.1",
+    "langchain-text-splitters==1.1.2",
+    "pyyaml>=6.0",
+]
 
 [project.scripts]
 juena-rag = "juena_rag.service.cli:main"
@@ -80,27 +100,6 @@ dev = [
     "httpx>=0.27",
     "uvicorn[standard]>=0.24.0",
 ]
-# What the worked pipelines in `use-cases/` need, and nothing in the package does:
-# a code chunker, a text splitter and a YAML parser. Its own group rather than an
-# addition to `dev`, because `chonkie[code]` brings tree-sitter grammars and
-# somebody running the package's own tests should not have to install a code
-# parser to do it.
-#
-# Both chunkers are pinned exactly, and that is not caution. Left as `chonkie>=`,
-# uv resolved a newer release that split the identical 170 jscatter files into
-# 4,114 chunks instead of 3,293 -- 25% more, entirely in `.py`, which is the only
-# extension that reaches chonkie at all. Nothing announced it and nothing failed:
-# the corpus would just have been embedded along different boundaries, at 25% more
-# cost, for a reason nobody could reconstruct afterwards.
-#
-# `langchain-text-splitters` is pinned on principle rather than on evidence --
-# 1.1.1 and 1.1.2 produce byte-identical output here, which is how the difference
-# above was traced to chonkie. It is pinned before it gets the chance to stop.
-use-cases = [
-    "chonkie[code]==1.6.1",
-    "langchain-text-splitters==1.1.2",
-    "pyyaml>=6.0",
-]
 
 [build-system]
 requires = ["hatchling"]
@@ -110,7 +109,7 @@ build-backend = "hatchling.build"
 packages = ["src/juena_rag"]
 
 [tool.pytest.ini_options]
-# `use-cases/` holds tests too. They skip cleanly without the `use-cases` group,
-# the same way the database tests skip without a database. Test file *basenames*
-# have to stay unique across both paths -- pytest imports them by name.
-testpaths = ["tests", "use-cases"]
+# The ingestion tests skip cleanly without the `[ingest]` extra (`uv run --extra
+# ingest pytest` runs them), the same way the database tests skip without a
+# database.
+testpaths = ["tests"]

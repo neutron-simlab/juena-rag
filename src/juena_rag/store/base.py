@@ -21,6 +21,12 @@ from juena_rag.schema.models import SearchResult, SourceRow
 DEFAULT_K = 100
 DEFAULT_N = 5
 
+#: How many of the closest chunks a reranker re-reads when a search asks for it.
+#: Two requests' worth at Blablador's ~10 documents each: enough for the reranker
+#: to pull a good chunk up from 15th place, without making a person wait on a
+#: dozen model calls. Never more than ``k``, which is all the index retrieved.
+DEFAULT_RERANK_CANDIDATES = 20
+
 #: The HTTP API's version, in every path. Defined here because the service and
 #: its client both need it, and a client pinning a different one than the server
 #: serves is a 404 nobody can explain.
@@ -86,8 +92,12 @@ class ReadableStore(Protocol):
         chunk_kinds: Sequence[str] | None = None,
         k: int | None = None,
         n: int | None = None,
+        rerank: bool = False,
     ) -> SearchResult:
-        """The ``n`` chunks closest to ``query``, among ``k`` the index retrieved."""
+        """The ``n`` chunks closest to ``query``, among ``k`` the index retrieved.
+
+        With ``rerank``, a reranking model re-orders the closest candidates first.
+        """
 
     def list_sources(self) -> list[SourceRow]:
         """The catalogue, newest first."""

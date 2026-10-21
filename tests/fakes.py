@@ -1,14 +1,16 @@
-"""Two embedders that never touch the network. Test scaffolding, not shipped.
+"""Embedders and rerankers that never touch the network. Test scaffolding, not shipped.
 
-They live here rather than in the package because neither is something a user of
-juena-rag should reach for: :class:`FakeEmbedder` invents numbers, and
-:class:`NullEmbedder` exists only to be the wrong answer.
+They live here rather than in the package because none is something a user of
+juena-rag should reach for: :class:`FakeEmbedder` invents numbers,
+:class:`NullEmbedder` exists only to be the wrong answer, :class:`FakeReranker`
+judges by one word, and :class:`FailingReranker` is a model that is down.
 """
 
 import hashlib
 import math
 
 from juena_rag.embedding import EmbeddingMetadata, NoEmbedderConfigured
+from juena_rag.reranking import RerankFailed
 
 
 class FakeEmbedder:
@@ -78,3 +80,38 @@ class NullEmbedder:
 
     def embed_query(self, text: str) -> list[float]:
         raise NoEmbedderConfigured(self._COMPLAINT)
+
+
+class FakeReranker:
+    """Scores a candidate 1.0 if it contains ``favourite``, otherwise 0.0.
+
+    Ties keep the order they arrived in, which is the vector-distance order -- so a
+    test can see exactly which candidate the reranker pulled up, and that nothing
+    else moved. Proves wiring, never ranking quality.
+    """
+
+    def __init__(self, favourite: str) -> None:
+        self.name = "fake-reranker"
+        self.favourite = favourite
+        #: Every candidate list it was handed, in order.
+        self.calls: list[list[str]] = []
+
+    def rerank(self, query: str, candidates: list[str], n: int) -> list[tuple[int, float]]:
+        self.calls.append(list(candidates))
+        scored = [
+            (index, 1.0 if self.favourite in text else 0.0)
+            for index, text in enumerate(candidates)
+        ]
+        # `sorted` keeps equal scores in their incoming order.
+        return sorted(scored, key=lambda pair: pair[1], reverse=True)[:n]
+
+
+class FailingReranker:
+    """A reranking model that is down -- what Blablador answered on 2026-10-20."""
+
+    name = "failing-reranker"
+
+    def rerank(self, query: str, candidates: list[str], n: int) -> list[tuple[int, float]]:
+        raise RerankFailed(
+            f"{self.name}: Error code: 503 - Model is temporarily unavailable"
+        )

@@ -83,6 +83,7 @@ def create_app(store: Store, *, max_concurrency: int | None = None) -> FastAPI:
             chunk_kinds=request.chunk_kinds,
             k=request.k,
             n=request.n,
+            rerank=request.rerank,
         )
 
     @router.get("/sources")

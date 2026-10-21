@@ -18,11 +18,13 @@ from psycopg.types.json import Json
 from psycopg_pool import ConnectionPool
 
 from juena_rag.embedding.base import Embedder
+from juena_rag.reranking.base import Reranker, RerankFailed
 from juena_rag.schema.boundary import ChunkBatch
 from juena_rag.schema.models import SearchHit, SearchResult, SourceMetadata, SourceRow
 from juena_rag.store.base import (
     DEFAULT_K,
     DEFAULT_N,
+    DEFAULT_RERANK_CANDIDATES,
     DimensionMismatch,
     SourceNotFound,
     StoreError,
@@ -44,17 +46,28 @@ class Store:
         dsn: str,
         *,
         embedder: Embedder,
+        reranker: Reranker | None = None,
         k: int = DEFAULT_K,
         n: int = DEFAULT_N,
+        rerank_candidates: int = DEFAULT_RERANK_CANDIDATES,
         min_size: int = 1,
         max_size: int = 4,
         check_dimension: bool = True,
         analyze_after_write: bool = True,
     ) -> None:
+        """
+        :param reranker: what re-orders candidates when a search passes
+            ``rerank=True``. Optional: without one, such a search is refused
+            rather than quietly answered in the other order.
+        :param rerank_candidates: how many of the closest chunks the reranker
+            re-reads.
+        """
         self._embedder = embedder
         self._dimension = embedder.metadata.dimension
+        self.reranker = reranker
         self.k = k
         self.n = n
+        self.rerank_candidates = rerank_candidates
         self._analyze_after_write = analyze_after_write
 
         self._pool = ConnectionPool(
@@ -235,11 +248,18 @@ class Store:
         chunk_kinds: Sequence[str] | None = None,
         k: int | None = None,
         n: int | None = None,
+        rerank: bool = False,
     ) -> SearchResult:
         """Find the ``n`` chunks closest to ``query``, among ``k`` the index retrieved.
 
         Every filter here is applied inside the SQL, never after it: filtering a
         result set in Python leaks through the count and the ordering.
+
+        With ``rerank``, the database returns ``rerank_candidates`` chunks instead
+        of ``n``, the reranker re-reads them with the question, and its best ``n``
+        come back with a ``rerank_score``. If the reranking model cannot answer,
+        the search still does, in vector-distance order, with ``rerank_error``
+        saying why.
         """
         k = self.k if k is None else k
         n = self.n if n is None else n
@@ -248,6 +268,17 @@ class Store:
                 f"n={n} exceeds k={k}: the database retrieves k candidates and only "
                 "those can be returned, so asking for more yields fewer, quietly."
             )
+        if rerank and self.reranker is None:
+            # A setup mistake, not a model being down, so it is refused (a 400
+            # over HTTP) rather than answered in an order the caller did not ask for.
+            raise ValueError(
+                "rerank=True, but this store was built without a reranker. Pass "
+                "one -- BlabladorReranker.from_env() in production."
+            )
+
+        # The reranker needs more than `n` to choose from -- but never more than
+        # the `k` the index retrieved.
+        wanted = min(max(n, self.rerank_candidates), k) if rerank else n
 
         embedded = Vector(self._embedder.embed_query(query))
         parameters = {
@@ -256,7 +287,7 @@ class Store:
             "categories": list(categories) if categories is not None else None,
             "chunk_kinds": list(chunk_kinds) if chunk_kinds is not None else None,
             "k": k,
-            "n": n,
+            "n": wanted,
         }
 
         with (
@@ -280,7 +311,34 @@ class Store:
                 )
                 documents = [SourceRow.model_validate(row) for row in cursor.fetchall()]
 
-        return SearchResult(sources=documents, hits=hits)
+        # Outside the `with` on purpose: the connection is back in the pool before
+        # the reranker's model calls start. The pool holds four, and a search that
+        # kept one through a few seconds of reranking would starve the others.
+        reranked_by = None
+        rerank_error = None
+        if rerank and hits:
+            try:
+                order = self.reranker.rerank(query, [hit.text for hit in hits], n)
+            except RerankFailed as error:
+                hits = hits[:n]
+                rerank_error = str(error)
+            else:
+                hits = [
+                    hits[index].model_copy(update={"rerank_score": score})
+                    for index, score in order
+                ]
+                reranked_by = self.reranker.name
+
+            # Candidates that did not make the cut take their documents with them.
+            kept = {hit.source_id for hit in hits}
+            documents = [document for document in documents if document.source_id in kept]
+
+        return SearchResult(
+            sources=documents,
+            hits=hits,
+            reranked_by=reranked_by,
+            rerank_error=rerank_error,
+        )
 
     def list_sources(self) -> list[SourceRow]:
         """The catalogue, newest first."""

@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover - depends on the install, not the code
         "`juena_rag.embedding`, which has no network dependency."
     ) from None
 
-DEFAULT_BASE_URL = "https://api.helmholtz-blablador.fz-juelich.de/v1"
+DEFAULT_BASE_URL = "https://api.blablador.fz-juelich.de/v1"
 
 #: The configured name, used verbatim in the request and in the
 #: ``embedding_model`` column. Blablador's ``/v1/models`` also reports the

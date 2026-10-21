@@ -4,6 +4,10 @@ Everything here is git and the filesystem -- no chunking, no embedding, no
 database. Carried over from the chatbot's ``repo_manager.py`` and ``repo_config.py``
 with the manifest and diff machinery removed, since this pipeline always re-indexes
 a whole repository rather than the files that changed.
+
+The ``repositories.yaml`` belongs to whoever runs the ingest -- juena-lab keeps its
+own -- and it decides how the files are split. juena-rag reads it and holds no
+chunk size of its own.
 """
 
 import fnmatch
@@ -13,7 +17,13 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import yaml
+try:
+    import yaml
+except ImportError:  # pragma: no cover - depends on the install, not the code
+    raise ImportError(
+        "reading repositories.yaml needs `pyyaml`, which is not installed. "
+        "`pip install 'juena-rag[ingest]'`."
+    ) from None
 
 # Sensible for a Python project, and overridden per repository in the YAML.
 DEFAULT_INCLUDE = ["**/*.py", "**/*.md", "**/*.rst", "**/*.txt"]
@@ -46,17 +56,22 @@ class RepoConfig:
 
     The same field names the chatbot's ``config/repositories.yaml`` uses, so an
     entry can be copied between the two files unchanged.
+
+    ``chunk_size`` and ``chunk_overlap`` have no default on purpose. They decide
+    every chunk boundary, so the caller's config states them; a default here would
+    quietly win whenever someone forgot, and nobody would notice until search
+    results changed.
     """
 
     id: str
     name: str
+    chunk_size: int
+    chunk_overlap: int
     description: str = ""
     source: RepoSource = field(default_factory=lambda: RepoSource(url=""))
     include_globs: list[str] = field(default_factory=lambda: list(DEFAULT_INCLUDE))
     exclude_globs: list[str] = field(default_factory=lambda: list(DEFAULT_EXCLUDE))
     max_file_bytes: int = DEFAULT_MAX_FILE_BYTES
-    chunk_size: int = 1500
-    chunk_overlap: int = 200
     docs_paths: list[str] = field(default_factory=list)
 
 
@@ -69,17 +84,24 @@ def load_repositories(path: Path) -> dict[str, RepoConfig]:
         source = entry.get("source", {})
         if not source.get("url"):
             raise ValueError(f"repository {entry.get('id', '?')!r} names no source.url")
+        for setting in ("chunk_size", "chunk_overlap"):
+            if setting not in entry:
+                raise ValueError(
+                    f"repository {entry.get('id', '?')!r} sets no {setting}. The "
+                    "config that runs the ingest decides how files are split; "
+                    "juena-rag has no default to fall back on."
+                )
 
         config = RepoConfig(
             id=entry["id"],
             name=entry.get("name", entry["id"]),
+            chunk_size=entry["chunk_size"],
+            chunk_overlap=entry["chunk_overlap"],
             description=entry.get("description", ""),
             source=RepoSource(url=source["url"], branch=source.get("branch", "main")),
             include_globs=entry.get("include_globs", list(DEFAULT_INCLUDE)),
             exclude_globs=entry.get("exclude_globs", list(DEFAULT_EXCLUDE)),
             max_file_bytes=entry.get("max_file_bytes", DEFAULT_MAX_FILE_BYTES),
-            chunk_size=entry.get("chunk_size", 1500),
-            chunk_overlap=entry.get("chunk_overlap", 200),
             docs_paths=entry.get("docs_paths", []),
         )
         if config.id in configs:

@@ -1,4 +1,5 @@
-# Which repositories this pipeline can ingest, and how to treat their files.
+# Which repositories juena-rag's own corpus holds, and how to treat their files.
+# Read by `juena-rag ingest-repo <id> --config use-cases/code-repository/repositories.yaml`.
 #
 # Adding one is a block here, not new Python. The field names match the chatbot's
 # `config/repositories.yaml`, so an entry can be copied between the two unchanged.
@@ -9,8 +10,8 @@
 #   include_globs  which files to index; `**/` means zero or more directories
 #   exclude_globs  which to skip -- exclusions win over inclusions
 #   max_file_bytes skip anything larger, in bytes
-#   chunk_size     characters per chunk (not tokens)
-#   chunk_overlap  characters repeated between neighbouring chunks
+#   chunk_size     characters per chunk (not tokens) -- required, no default
+#   chunk_overlap  characters repeated between neighbouring chunks -- required too
 #   docs_paths     a file, or a directory prefix, whose chunks are marked is_doc
 #
 # 3000/400 is measured, not inherited. The chatbot uses 1500/200, and at that size

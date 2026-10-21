@@ -11,6 +11,12 @@ function, subroutine or section a given line sits inside. That answer is identic
 pipeline that will ever read Fortran, and getting it wrong is visible in every citation the
 corpus produces, so it belongs here rather than in each caller.
 
+**A second one:** git repositories. `juena-rag ingest-repo`, behind the `[ingest]` extra,
+clones a repository, splits it and stores it as one source, because two applications index
+code and both would otherwise copy the same script. Where a chunk ends is still the
+caller's decision: its own `repositories.yaml` sets `chunk_size` and `chunk_overlap`, and
+juena-rag has no default to fall back on.
+
 > The schema, the store, the read-only HTTP service and its client are built and
 > carry a real corpus. What the contract below still describes ahead of the code is
 > the deployment; see [Status](#status).
@@ -157,22 +163,22 @@ git clone <this repo> && cd juena-rag
 uv sync                     # creates .venv, installs deps and the dev group
 cp .env.example .env        # then set POSTGRES_PASSWORD, and a key if you want [embed]
 docker compose up -d        # PostgreSQL 18 with pgvector, on port 5433
-uv run pytest               # 256 tests, 1 skip
+uv run pytest               # 258 tests, 1 skip
 ```
 
 Two things are optional, and each shows up as skips rather than failures:
 
 | | Passes | Skips |
 | --- | ---: | ---: |
-| `uv run pytest` | 256 | 1 |
-| `uv run pytest`, container stopped | 181 | 76 |
-| `uv run --group use-cases pytest` | **272** | 0 |
-| `uv run --group use-cases pytest`, container stopped | 197 | 75 |
+| `uv run pytest` | 258 | 1 |
+| `uv run pytest`, container stopped | 183 | 76 |
+| `uv run --extra ingest pytest` | **274** | 0 |
+| `uv run --extra ingest pytest`, container stopped | 199 | 75 |
 
 An unreachable `JUENA_RAG_TEST_DSN` is treated the same as an unset one, so the database
 tests skip on a plane. Each of them works in its own throwaway schema and drops it
-afterwards. The single skip in the first row is the chunking suite in `use-cases/`, which
-needs the optional group that carries a code chunker.
+afterwards. The single skip in the first row is the chunking suite, which needs the
+`[ingest]` extra that carries a code chunker.
 
 The container is a development database and nothing else; it is not the shape anything
 deploys in. See [`deploy/kube/`](deploy/kube/) for that.
@@ -189,6 +195,7 @@ Extras, so a pipeline author installs only what they need:
 | `pip install juena-rag[embed]` | the Blablador embedding client (openai, tokenizers) |
 | `pip install juena-rag[client]` | `HttpStore` — search the service over HTTP (httpx) |
 | `pip install juena-rag[serve]` | the HTTP service — FastAPI and uvicorn, **and the two extras above**, since it is the thing that reaches the database and embeds the question |
+| `pip install juena-rag[ingest]` | `juena-rag ingest-repo` — a code chunker, a text splitter and a YAML reader, plus `[store]` and `[embed]` |
 
 `[embed]` is separate from `[store]` on purpose: a store handed an embedder needs no
 network stack of its own. The `Embedder` protocol and its checks are in the base
@@ -234,12 +241,14 @@ src/juena_rag/
 │                  (the client, the vocabulary) are behind [embed]
 ├── store/         base.py is the read contract and the errors, and needs no driver;
 │                  pgvector.py is [store], http.py is [client], ddl.sql is the table
-└── service/       the HTTP service -- five endpoints and `juena-rag serve`, [serve]
+├── ingest/        `juena-rag ingest-repo` -- clone, split, embed, store, [ingest]
+└── service/       the HTTP service -- five endpoints, `juena-rag serve`, and the
+                   command line both subcommands share
 deploy/kube/       the deployed database: a CloudNativePG cluster,
                    one base and a `vm` overlay for the single node
 docker-compose.yml the local one, for tests
-use-cases/         worked ingestion pipelines built *on* the package, not in it --
-                   outside src/ so the base install stays pydantic-only
+use-cases/         juena-rag's own corpus: its repositories.yaml, and search.py
+                   for asking it a question from a clone
 tests/
 ```
 
@@ -274,4 +283,4 @@ Two things to know before touching the schema:
 | Deployed database | built — CloudNativePG, verified on a real cluster; the OpenShift arbitrary-UID question is still open |
 | HTTP service | built — five read endpoints under `/v1`, `juena-rag serve`, no write side |
 | The client | built — `HttpStore`, the same five methods over HTTP; a shared suite runs every read against both |
-| Ingestion pipelines | out of scope by design — but [`use-cases/code-repository/`](use-cases/code-repository/) is one worked example, and eight repositories and 38,477 chunks are the corpus it now holds |
+| Ingestion pipelines | one built — `juena-rag ingest-repo` for git repositories, `[ingest]`; eight repositories and 38,477 chunks are the corpus it holds ([`use-cases/code-repository/`](use-cases/code-repository/)) |

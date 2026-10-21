@@ -1,27 +1,36 @@
 # Ingesting a code repository
 
-A worked example of the thing the package's README claims is easy: *"a new document type
-is a new script in someone's own repository plus a schema subclass."* This is that script,
-for source code, using the `CodeChunk` class juena-rag already ships.
+How juena-rag's own corpus — eight scientific-software repositories — is indexed, with
+`juena-rag ingest-repo`.
 
 It clones a git repository, splits every file into chunks, embeds them and stores the whole
 thing as **one source** — so a search during an ingest sees the old revision or the new one,
 never a half-built index.
 
-Nothing here is imported by `juena_rag`. It sits outside `src/` deliberately — cloning
-repositories, reading YAML and choosing chunk boundaries are this pipeline's business, not
-the package's. What *did* move into the package is language parsing: see
-`juena_rag.parsers`, below.
+This started as a script in this folder. It moved into the package as `juena_rag.ingest`
+when a second application, juena-lab, needed the same pipeline and was running this
+folder's script from outside the package. What stays here is the config that belongs to
+*this* corpus, [`repositories.yaml`](repositories.yaml), and `search.py`. Every caller keeps
+its own config, and that config — not juena-rag — decides `chunk_size` and
+`chunk_overlap`.
 
 ## Running it
 
 ```bash
 docker compose up -d                    # from the repository root
-uv sync --group use-cases
+uv sync --extra ingest
+set -a; source .env; set +a             # export .env into this shell
 
-uv run --group use-cases python use-cases/code-repository/ingest.py jscatter --dry-run
-uv run --group use-cases python use-cases/code-repository/ingest.py jscatter
+uv run --extra ingest juena-rag ingest-repo jscatter \
+    --config use-cases/code-repository/repositories.yaml --dry-run
+uv run --extra ingest juena-rag ingest-repo jscatter \
+    --config use-cases/code-repository/repositories.yaml
 ```
+
+The command never reads a file for its settings, so a container passes the same values as
+ordinary environment variables. `source` rather than `uv run --env-file .env`, because
+`.env` builds its connection strings from references like `${POSTGRES_PORT:-5433}`: the
+shell expands them, uv's loader passes them through as they are written.
 
 `--dry-run` chunks and counts without touching the network or the database, which is the
 right way to check a config change. The full run needs two things in `.env`:
@@ -46,7 +55,7 @@ Adding a repository is a block in [`repositories.yaml`](repositories.yaml), not 
 ## Reading it back
 
 ```bash
-uv run --group use-cases python use-cases/code-repository/search.py \
+uv run python use-cases/code-repository/search.py \
     "how do I fit a form factor to SANS data?"
 ```
 
@@ -165,10 +174,10 @@ makes this a sanity check, not a benchmark.
 
 | File | |
 | --- | --- |
-| [`repository.py`](repository.py) | clone or refresh, resolve the revision, list the files worth indexing |
-| [`chunking.py`](chunking.py) | one file → `list[CodeChunk]` |
-| `juena_rag.parsers` | *in the package* — what each file declares, and on which lines |
-| [`ingest.py`](ingest.py) | wires those to `Store.replace_source` |
+| `juena_rag.ingest.repository` | clone or refresh, resolve the revision, list the files worth indexing |
+| `juena_rag.ingest.chunking` | one file → `list[CodeChunk]` |
+| `juena_rag.parsers` | what each file declares, and on which lines |
+| `juena_rag.ingest.code_repository` | wires those to `Store.replace_source`; `juena-rag ingest-repo` calls it |
 | [`search.py`](search.py) | the other direction — `Store.search`, printed for a person |
 | [`repositories.yaml`](repositories.yaml) | which repositories, and how to treat their files |
 
@@ -245,9 +254,9 @@ Two defects, both found on first real use rather than by review:
 ## Tests
 
 ```bash
-uv run pytest use-cases/
+uv run --extra ingest pytest tests/test_chunking.py tests/test_repository.py
 ```
 
 No network, no git, no database — they build directory trees in a temporary folder and chunk
-strings. They skip cleanly if the `use-cases` group is not installed, the same way the
+strings. They skip cleanly if the `[ingest]` extra is not installed, the same way the
 database tests skip without a database.

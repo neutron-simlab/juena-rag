@@ -10,17 +10,16 @@ symbol, ``chunk_kind`` and a working ``is_doc``.
 from pathlib import Path
 from typing import Any
 
-from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
-
 from juena_rag.parsers import Definition, enclosing, outline
 from juena_rag.schema.registry import CodeChunk
 
 try:
     from chonkie import CodeChunker
+    from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
 except ImportError:  # pragma: no cover - depends on the install, not the code
     raise ImportError(
-        "chunking needs the `chonkie` package, which is not installed. "
-        "`uv sync --group use-cases`."
+        "chunking needs `chonkie` and `langchain-text-splitters`, which are not "
+        "installed. `pip install 'juena-rag[ingest]'`."
     ) from None
 
 #: What a file's extension says it is written in. Anything unlisted is ``"other"``,
@@ -208,15 +207,16 @@ def chunk_file(
     source: str,
     rel_path: str,
     *,
+    chunk_size: int,
+    chunk_overlap: int,
     is_doc: bool = False,
-    chunk_size: int = 1500,
-    chunk_overlap: int = 200,
 ) -> list[CodeChunk]:
     """Split one file into chunks ready to hand to a ``ChunkBatch``.
 
     ``chunk_size`` is in *characters*, not tokens -- the splitters count characters
     and the embedding model's ceiling is in tokens, which is what
-    ``ModelTokenCounter`` is for.
+    ``ModelTokenCounter`` is for. Both sizes are required: they come from the
+    caller's ``repositories.yaml``, never from a default in here.
     """
     language = detect_language(rel_path)
     # The splitter refuses an overlap at or above the chunk size, which is a

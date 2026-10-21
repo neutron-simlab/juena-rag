@@ -6,9 +6,9 @@ asks the same questions of it that an ingest asks of a clone.
 
 import pytest
 
-pytest.importorskip("yaml", reason="needs the `use-cases` dependency group")
+pytest.importorskip("yaml", reason="needs the `[ingest]` extra")
 
-from repository import (  # imported below the skip, deliberately
+from juena_rag.ingest.repository import (  # imported below the skip, deliberately
     RepoConfig,
     RepoSource,
     is_doc,
@@ -25,6 +25,8 @@ def a_config(**overrides) -> RepoConfig:
         "id": "example",
         "name": "Example",
         "source": RepoSource(url="https://example.invalid/x.git"),
+        "chunk_size": 3000,
+        "chunk_overlap": 400,
         "include_globs": ["**/*.py", "**/*.rst"],
         "exclude_globs": ["**/build/**", "**/.git/**"],
         "docs_paths": ["README.rst", "src/example/doc/"],
@@ -122,10 +124,26 @@ def test_reading_outside_the_repository_is_refused(tmp_path):
 def test_the_shipped_config_loads_and_names_jscatter():
     from pathlib import Path
 
-    configs = load_repositories(Path(__file__).parent / "repositories.yaml")
+    shipped = Path(__file__).parent.parent / "use-cases" / "code-repository"
+    configs = load_repositories(shipped / "repositories.yaml")
     assert "jscatter" in configs
     assert configs["jscatter"].source.branch == "main"
     assert configs["jscatter"].docs_paths == ["README.rst", "src/jscatter/doc/"]
+    assert (configs["jscatter"].chunk_size, configs["jscatter"].chunk_overlap) == (3000, 400)
+
+
+@pytest.mark.parametrize("missing", ["chunk_size", "chunk_overlap"])
+def test_an_entry_that_does_not_say_how_to_split_is_refused(tmp_path, missing):
+    """The caller's config decides the split; juena-rag has no default to use."""
+    sizes = {"chunk_size": "3000", "chunk_overlap": "400"}
+    del sizes[missing]
+    path = tmp_path / "repositories.yaml"
+    path.write_text(
+        "repositories:\n  - id: unsplit\n    source: {url: 'https://a.invalid/x.git'}\n"
+        + "".join(f"    {name}: {value}\n" for name, value in sizes.items())
+    )
+    with pytest.raises(ValueError, match=f"sets no {missing}"):
+        load_repositories(path)
 
 
 def test_an_entry_with_no_url_is_refused(tmp_path):
@@ -141,7 +159,9 @@ def test_two_entries_with_one_id_are_refused(tmp_path):
     path.write_text(
         "repositories:\n"
         "  - id: twice\n    source: {url: 'https://a.invalid/x.git'}\n"
+        "    chunk_size: 3000\n    chunk_overlap: 400\n"
         "  - id: twice\n    source: {url: 'https://b.invalid/y.git'}\n"
+        "    chunk_size: 3000\n    chunk_overlap: 400\n"
     )
     with pytest.raises(ValueError, match="appears twice"):
         load_repositories(path)

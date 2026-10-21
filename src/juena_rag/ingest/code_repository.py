@@ -1,27 +1,24 @@
 """Clone a repository, chunk it, embed it, and store it as one source.
 
-    uv run --group use-cases python use-cases/code-repository/ingest.py jscatter --dry-run
-    uv run --group use-cases python use-cases/code-repository/ingest.py jscatter
+    juena-rag ingest-repo jscatter --config repositories.yaml --dry-run
+    juena-rag ingest-repo jscatter --config repositories.yaml
 
 One repository is one source: ``source_id`` is the repository's id, ``revision`` is
 the git sha, and each file is a chunk's ``source_uri``. So a run replaces the whole
 repository atomically -- a search during an ingest sees the old revision or the new
 one, never a half-built index.
+
+Needs the ``[ingest]`` extra. The command line lives in
+:mod:`juena_rag.service.cli`; this module is the work it calls.
 """
 
-import argparse
 import os
 import sys
 import time
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-from juena_rag.schema.boundary import ChunkBatch
-from juena_rag.schema.models import SourceMetadata
-
-from chunking import chunk_file  # isort: skip -- this directory is a flat import root
-from repository import (  # isort: skip
+from juena_rag.ingest.chunking import chunk_file
+from juena_rag.ingest.repository import (
     RepoConfig,
     current_revision,
     is_doc,
@@ -30,13 +27,8 @@ from repository import (  # isort: skip
     read_file,
     sync,
 )
-
-HERE = Path(__file__).parent
-DEFAULT_CONFIG = HERE / "repositories.yaml"
-
-#: Where clones live, relative to the juena-rag checkout. Point `--cache-dir` at
-#: the chatbot's `data/repos` to reuse a clone it already has.
-DEFAULT_CACHE_DIR = HERE.parent.parent / "data" / "repos"
+from juena_rag.schema.boundary import ChunkBatch
+from juena_rag.schema.models import SourceMetadata
 
 
 def collect(config: RepoConfig, root: Path, limit: int | None) -> list:
@@ -94,60 +86,50 @@ def report_tokens(chunks: list, ceiling: int) -> None:
         )
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("repository", help="an id from repositories.yaml")
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="chunk and count only -- no embedding, no database",
-    )
-    parser.add_argument(
-        "--no-sync",
-        action="store_true",
-        help="use the clone as it stands, without fetching -- for working offline, "
-        "or comparing against the exact revision somebody else indexed",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="re-ingest even when the stored revision already matches",
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        help="only the first N files, for a cheap smoke test against the real model",
-    )
-    arguments = parser.parse_args()
+def ingest_repository(
+    repository_id: str,
+    *,
+    config_path: Path,
+    cache_dir: Path,
+    dry_run: bool = False,
+    no_sync: bool = False,
+    force: bool = False,
+    limit: int | None = None,
+) -> int:
+    """Run one ingest. Returns the process's exit code, like a command would.
 
-    load_dotenv()
-
-    configs = load_repositories(arguments.config)
-    config = configs.get(arguments.repository)
+    Settings come from two places, each owned by the caller: how to split the
+    files from ``config_path``, and where to store them and which model embeds
+    them from the environment (``JUENA_RAG_DSN``, ``BLABLADOR_*``).
+    """
+    configs = load_repositories(config_path)
+    config = configs.get(repository_id)
     if config is None:
-        parser.error(
-            f"no repository {arguments.repository!r} in {arguments.config}. "
-            f"Configured: {', '.join(sorted(configs))}"
+        print(
+            f"no repository {repository_id!r} in {config_path}. "
+            f"Configured: {', '.join(sorted(configs))}",
+            file=sys.stderr,
         )
+        return 2
 
     print(f"{config.id}: {config.source.url} ({config.source.branch})")
-    if arguments.no_sync:
-        root = arguments.cache_dir / config.id
+    print(f"  chunk_size {config.chunk_size}, overlap {config.chunk_overlap}")
+    if no_sync:
+        root = cache_dir / config.id
         if not (root / ".git").is_dir():
-            parser.error(f"--no-sync, but there is no clone at {root}")
+            print(f"--no-sync, but there is no clone at {root}", file=sys.stderr)
+            return 2
     else:
-        root = sync(config, arguments.cache_dir)
+        root = sync(config, cache_dir)
     revision = current_revision(root)
     print(f"  at {revision[:12]} in {root}")
 
-    chunks = collect(config, root, arguments.limit)
+    chunks = collect(config, root, limit)
     if not chunks:
         print("nothing to ingest", file=sys.stderr)
         return 1
 
-    if arguments.dry_run:
+    if dry_run:
         report_tokens(chunks, ceiling=8192)
         kinds = {chunk.chunk_kind for chunk in chunks}
         docs = sum(1 for chunk in chunks if chunk.is_doc)
@@ -177,11 +159,7 @@ def main() -> int:
 
     with Store(dsn, embedder=embedder) as store:
         stored = store.get_structure(config.id)
-        if (
-            stored is not None
-            and stored.active_revision == revision
-            and not arguments.force
-        ):
+        if stored is not None and stored.active_revision == revision and not force:
             print(f"  already at {revision[:12]}; nothing to do (--force to re-ingest)")
             return 0
 
@@ -210,7 +188,3 @@ def main() -> int:
         )
 
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

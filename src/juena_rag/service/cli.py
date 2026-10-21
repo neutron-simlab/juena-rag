@@ -127,6 +127,7 @@ def _serve(*, host: str, port: int, log_level: str) -> int:
 
         from juena_rag.embedding.base import verify_dimension
         from juena_rag.embedding.blablador import BlabladorEmbedder
+        from juena_rag.reranking.blablador import BlabladorReranker
         from juena_rag.service.app import create_app
         from juena_rag.service.settings import ServiceSettings
         from juena_rag.store.pgvector import Store
@@ -142,6 +143,7 @@ def _serve(*, host: str, port: int, log_level: str) -> int:
     try:
         settings = ServiceSettings.from_env()
         embedder = BlabladorEmbedder.from_env()
+        reranker = BlabladorReranker.from_env()
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2
@@ -157,10 +159,20 @@ def _serve(*, host: str, port: int, log_level: str) -> int:
         f"{embedder.metadata.dimension} numbers a vector",
         flush=True,
     )
+    # No check at startup for the reranker: its Blablador alias is experimental
+    # and can be down for hours, and a search that asks for reranking falls back
+    # to the vector order meanwhile. Refusing to start would lose search entirely.
+    print(
+        f"reranking with {reranker.name} when a search asks for it, "
+        f"{settings.rerank_candidates} candidates",
+        flush=True,
+    )
 
     with Store(
         settings.dsn,
         embedder=embedder,
+        reranker=reranker,
+        rerank_candidates=settings.rerank_candidates,
         min_size=settings.pool_min_size,
         max_size=settings.pool_max_size,
     ) as store:

@@ -9,6 +9,8 @@ environment is one way of filling them rather than the only way.
 import os
 from dataclasses import dataclass
 
+from juena_rag.store.base import DEFAULT_RERANK_CANDIDATES
+
 #: How many database connections the pool holds. Four is `Store`'s own default.
 DEFAULT_POOL_MIN_SIZE = 1
 DEFAULT_POOL_MAX_SIZE = 4
@@ -39,6 +41,10 @@ class ServiceSettings:
     pool_max_size: int = DEFAULT_POOL_MAX_SIZE
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY
 
+    #: How many of the closest chunks the reranker re-reads, for a search that
+    #: asks for reranking. The reranking model itself is ``BLABLADOR_RERANK_MODEL``.
+    rerank_candidates: int = DEFAULT_RERANK_CANDIDATES
+
     @classmethod
     def from_env(cls, **overrides: object) -> "ServiceSettings":
         """Build from the environment. Anything passed as a keyword wins."""
@@ -52,6 +58,7 @@ class ServiceSettings:
             ("pool_min_size", "JUENA_RAG_POOL_MIN_SIZE"),
             ("pool_max_size", "JUENA_RAG_POOL_MAX_SIZE"),
             ("max_concurrency", "JUENA_RAG_MAX_CONCURRENCY"),
+            ("rerank_candidates", "JUENA_RAG_RERANK_CANDIDATES"),
         ):
             raw = os.getenv(variable, "").strip()
             if not raw:

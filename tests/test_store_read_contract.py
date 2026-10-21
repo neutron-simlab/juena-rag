@@ -11,6 +11,7 @@ import inspect
 
 import pytest
 from builders import a_source
+from fakes import FailingReranker, FakeReranker
 from fastapi.testclient import TestClient
 
 from juena_rag import Chunk, ChunkBatch, SearchResult, SourceRow
@@ -230,6 +231,63 @@ def test_status_counts_what_is_stored(any_store, store):
 
 def test_ping_returns_nothing_and_raises_nothing(any_store):
     assert any_store.ping() is None
+
+
+# --------------------------------------------------------------------------- #
+# Reranking -- the second stage, asked for one search at a time
+# --------------------------------------------------------------------------- #
+
+
+def test_a_reranked_search_puts_the_rerankers_choice_first(any_store, store):
+    store.replace_source(a_batch("alpha", "beta", "gamma"))
+    store.reranker = FakeReranker(favourite="gamma")
+
+    plain = any_store.search("beta", n=2)
+    reranked = any_store.search("beta", n=2, rerank=True)
+
+    assert plain.hits[0].text == "beta" and plain.reranked_by is None
+    assert reranked.hits[0].text == "gamma"
+    assert reranked.reranked_by == "fake-reranker" and reranked.rerank_error is None
+    assert [hit.rerank_score for hit in reranked.hits] == [1.0, 0.0]
+    # The distance is still the database's own number, beside the reranker's.
+    assert reranked.hits[0].distance > 0
+
+
+def test_the_reranker_reads_only_the_closest_candidates(any_store, store):
+    store.replace_source(a_batch("alpha", "beta", "gamma", "delta", "epsilon"))
+    store.reranker = FakeReranker(favourite="gamma")
+    store.rerank_candidates = 3
+
+    any_store.search("beta", n=1, rerank=True)
+
+    [candidates] = store.reranker.calls
+    assert len(candidates) == 3 and candidates[0] == "beta"
+
+
+def test_a_reranker_that_is_down_leaves_the_distance_order_and_says_why(
+    any_store, store
+):
+    """The search still answers. Only the order is the first stage's."""
+    store.replace_source(a_batch("alpha", "beta", "gamma"))
+    expected = [hit.text for hit in store.search("beta", n=2).hits]
+    store.reranker = FailingReranker()
+
+    result = any_store.search("beta", n=2, rerank=True)
+
+    assert [hit.text for hit in result.hits] == expected
+    assert result.reranked_by is None
+    assert "temporarily unavailable" in result.rerank_error
+    assert all(hit.rerank_score is None for hit in result.hits)
+
+
+def test_reranking_without_a_reranker_is_refused(any_store):
+    """A setup mistake rather than a model being down, so it is loud.
+
+    The fixture's store has no reranker. The library raises `ValueError`; the
+    service answers 400, which the client reads back as the same `ValueError`.
+    """
+    with pytest.raises(ValueError, match="without a reranker"):
+        any_store.search("alpha", rerank=True)
 
 
 # --------------------------------------------------------------------------- #

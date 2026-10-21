@@ -148,3 +148,7 @@ class SearchRequest(BaseModel):
     #: know them, and cannot be given a stale copy of them.
     k: int | None = Field(default=None, gt=0)
     n: int | None = Field(default=None, gt=0)
+
+    #: Re-order the closest candidates with the service's reranking model. Off
+    #: unless the caller asks: it costs extra model calls on every search.
+    rerank: bool = False

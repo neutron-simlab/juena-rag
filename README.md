@@ -257,8 +257,9 @@ src/juena_rag/
 deploy/kube/       the deployed database: a CloudNativePG cluster,
                    one base and a `vm` overlay for the single node
 docker-compose.yml the local one, for tests
-use-cases/         juena-rag's own corpus: its repositories.yaml, and search.py
-                   for asking it a question from a clone
+use-cases/         an example repositories.yaml, and search.py for asking the
+                   corpus a question from a clone; JüNA's own list of repositories
+                   is juena-chatbot's config/repositories.yaml
 tests/
 ```
 

@@ -1,10 +1,11 @@
 """Ask the corpus a question and see which files answer it.
 
-    uv run --group use-cases python use-cases/code-repository/search.py \\
+    uv run python use-cases/code-repository/search.py \\
         "how do I fit a form factor to SANS data?"
 
-The counterpart to ``ingest.py``: that one writes a repository in, this one reads
-it back. Nothing here is specific to code repositories except what it prints.
+The counterpart to ``juena-rag ingest-repo``: that one writes a repository in,
+this one reads it back. Nothing here is specific to code repositories except what
+it prints.
 """
 
 import argparse
@@ -76,7 +77,7 @@ def main() -> int:
         )
 
     if not result.hits:
-        print("nothing matched -- is anything ingested? (see ingest.py)")
+        print("nothing matched -- is anything ingested? (see juena-rag ingest-repo)")
         return 1
 
     # Cosine distance: smaller is closer. Not turned into a percentage anywhere,

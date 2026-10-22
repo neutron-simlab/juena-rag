@@ -147,7 +147,8 @@ class Store:
         """Replace a source's entire content, atomically. Returns the new revision.
 
         Readers see the old revision or the new one and never a half-built index.
-        Everything -- embedding included -- happens inside one transaction, so a
+        Embedding happens first, holding no connection; the delete, the insert and
+        the move of ``active_revision`` then run in one short transaction, so a
         failure anywhere leaves the previous revision serving.
         """
         vectors = self._embedder.embed_documents([chunk.text for chunk in batch.chunks])

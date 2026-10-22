@@ -85,9 +85,9 @@ class ChunkBatch(BaseModel):
     @model_validator(mode="after")
     def _batch_agrees_with_source(self) -> Self:
         """Validation rules 5, 6 and 7."""
-        # Rule 7. The atomic replace inserts, moves active_revision, then deletes
-        # every other revision -- so an empty batch deletes the source's content
-        # and reports success. delete_source() exists for the deliberate case.
+        # Rule 7. The atomic replace deletes every chunk of the source, then
+        # inserts the batch -- so an empty batch deletes the source's content and
+        # reports success. delete_source() exists for the deliberate case.
         if self.mode == "replace" and not self.chunks:
             raise ValueError(
                 f"mode='replace' with no chunks would delete every chunk of source "

@@ -16,8 +16,9 @@ from juena_rag.schema.models import SearchResult, SourceRow
 
 #: How many candidates the index retrieves, and how many survive to the caller.
 #: Measured over a million rows: k=100 gives 96.4% recall@10, k=200 gives 99.2%,
-#: and above 200 the curve stops paying. Today's corpus is ~10k, where k=100 is
-#: ~99.8% -- so this is a floor to raise as the corpus grows, not a ceiling.
+#: and above 200 the curve stops paying. At ~10k chunks k=100 measured ~99.8%;
+#: the corpus is now ~38k and has not been re-measured -- so this is a floor to
+#: raise as the corpus grows, not a ceiling.
 DEFAULT_K = 100
 DEFAULT_N = 5
 

@@ -4,8 +4,9 @@ The package owns one thing: *a chunk, once it has been cleaned, gets stored,
 versioned, searched and cited correctly.* Parsing and chunking stay with whoever
 knows the document format.
 
-The base install is pydantic alone; storage arrives with the ``[store]`` extra
-and the web layer with ``[serve]``.
+The base install is pydantic, plus tree-sitter for :mod:`juena_rag.parsers`;
+storage arrives with the ``[store]`` extra, the web layer with ``[serve]`` and
+the code-repository pipeline with ``[ingest]``.
 """
 
 from juena_rag.schema import (

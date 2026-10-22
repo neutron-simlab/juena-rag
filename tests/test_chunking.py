@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("chonkie", reason="needs the `[ingest]` extra")
 
-from juena_rag.ingest.chunking import (  # imported below the skip, deliberately
+from juena_rag.ingest.code.chunking import (  # imported below the skip, deliberately
     chunk_file,
     detect_language,
     line_of,

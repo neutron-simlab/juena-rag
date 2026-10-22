@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
 def _ingest(arguments: argparse.Namespace) -> int:
     """Run one ingest, turning a missing extra or a bad config into a sentence."""
     try:
-        from juena_rag.ingest.code_repository import ingest_repository
+        from juena_rag.ingest.code.pipeline import ingest_repository
     except ImportError as error:
         print(
             f"ingestion is not installed: {error}\n  pip install 'juena-rag[ingest]'",

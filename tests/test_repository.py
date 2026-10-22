@@ -8,7 +8,7 @@ import pytest
 
 pytest.importorskip("yaml", reason="needs the `[ingest]` extra")
 
-from juena_rag.ingest.repository import (  # imported below the skip, deliberately
+from juena_rag.ingest.code.repository import (  # imported below the skip, deliberately
     RepoConfig,
     RepoSource,
     is_doc,

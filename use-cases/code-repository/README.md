@@ -7,7 +7,7 @@ It clones a git repository, splits every file into chunks, embeds them and store
 thing as **one source** — so a search during an ingest sees the old revision or the new one,
 never a half-built index.
 
-This started as a script in this folder. It moved into the package as `juena_rag.ingest`
+This started as a script in this folder. It moved into the package as `juena_rag.ingest.code`
 when a second application, juena-lab, needed the same pipeline and was running this
 folder's script from outside the package. What stays here is the config that belongs to
 *this* corpus, [`repositories.yaml`](repositories.yaml), and `search.py`. Every caller keeps
@@ -174,10 +174,10 @@ makes this a sanity check, not a benchmark.
 
 | File | |
 | --- | --- |
-| `juena_rag.ingest.repository` | clone or refresh, resolve the revision, list the files worth indexing |
-| `juena_rag.ingest.chunking` | one file → `list[CodeChunk]` |
+| `juena_rag.ingest.code.repository` | clone or refresh, resolve the revision, list the files worth indexing |
+| `juena_rag.ingest.code.chunking` | one file → `list[CodeChunk]` |
 | `juena_rag.parsers` | what each file declares, and on which lines |
-| `juena_rag.ingest.code_repository` | wires those to `Store.replace_source`; `juena-rag ingest-repo` calls it |
+| `juena_rag.ingest.code.pipeline` | wires those to `Store.replace_source`; `juena-rag ingest-repo` calls it |
 | [`search.py`](search.py) | the other direction — `Store.search`, printed for a person |
 | [`repositories.yaml`](repositories.yaml) | which repositories, and how to treat their files |
 

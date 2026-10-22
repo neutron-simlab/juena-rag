@@ -17,8 +17,8 @@ import sys
 import time
 from pathlib import Path
 
-from juena_rag.ingest.chunking import chunk_file
-from juena_rag.ingest.repository import (
+from juena_rag.ingest.code.chunking import chunk_file
+from juena_rag.ingest.code.repository import (
     RepoConfig,
     current_revision,
     is_doc,

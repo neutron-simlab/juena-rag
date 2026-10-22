@@ -307,7 +307,12 @@ class Store:
             documents: list[SourceRow] = []
             if found:
                 cursor.execute(
-                    "SELECT * FROM sources WHERE source_id = ANY(%s)", (found,)
+                    "SELECT s.*, "
+                    "  (SELECT count(*) FROM chunks WHERE source_id = s.source_id) "
+                    "    AS chunk_count "
+                    "FROM sources s "
+                    "WHERE s.source_id = ANY(%s)",
+                    (found,),
                 )
                 documents = [SourceRow.model_validate(row) for row in cursor.fetchall()]
 

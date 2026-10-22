@@ -139,6 +139,15 @@ def test_the_documents_travel_with_the_hits(any_store, store):
     assert result.source_of(result.hits[0]).title is None
 
 
+def test_the_documents_with_the_hits_say_how_many_chunks_they_hold(any_store, store):
+    """The count `list_sources()` gives, not the field's default of zero."""
+    store.replace_source(a_batch("alpha", "beta", "gamma"))
+
+    result = any_store.search("alpha", n=1)
+
+    assert result.sources[0].chunk_count == 3
+
+
 def test_the_filters_narrow_the_search(any_store, store):
     store.replace_source(a_batch("alpha", source_id="one", category="manual"))
     store.replace_source(a_batch("alpha", source_id="two", category="code"))

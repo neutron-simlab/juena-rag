@@ -1,7 +1,9 @@
 # Ingesting a code repository
 
-How juena-rag's own corpus — eight scientific-software repositories — is indexed, with
-`juena-rag ingest-repo`.
+How JüNA's corpus — eight scientific-software repositories — is indexed, with
+`juena-rag ingest-repo`. The eight are listed in juena-chatbot's
+`config/repositories.yaml` and ingested from there with `./juena repos-ingest`; this
+folder keeps a one-repository example of the same file.
 
 It clones a git repository, splits every file into chunks, embeds them and stores the whole
 thing as **one source** — so a search during an ingest sees the old revision or the new one,
@@ -9,10 +11,12 @@ never a half-built index.
 
 This started as a script in this folder. It moved into the package as `juena_rag.ingest.code`
 when a second application, juena-lab, needed the same pipeline and was running this
-folder's script from outside the package. What stays here is the config that belongs to
-*this* corpus, [`repositories.yaml`](repositories.yaml), and `search.py`. Every caller keeps
-its own config, and that config — not juena-rag — decides `chunk_size` and
-`chunk_overlap`.
+folder's script from outside the package. What stays here is an example config,
+[`repositories.yaml`](repositories.yaml), with jscatter alone, and `search.py`. Every caller
+keeps its own config, and that config — not juena-rag — decides `chunk_size` and
+`chunk_overlap`: JüNA's is juena-chatbot's `config/repositories.yaml`, juena-lab's is its
+`deploy/rag/repositories.yaml`. Until 2026-10-22 this folder held a second copy of JüNA's
+eight, and the two had drifted apart.
 
 ## Running it
 
@@ -50,7 +54,9 @@ its search path, so a corpus living there makes every `apply_ddl()` in the suite
 | `--no-sync` | use the clone as it stands, without fetching |
 | `--cache-dir` | where clones live (default `data/repos`) |
 
-Adding a repository is a block in [`repositories.yaml`](repositories.yaml), not new Python.
+Adding a repository is a block in a config file, not new Python. For JüNA's corpus that
+file is juena-chatbot's `config/repositories.yaml`, followed by `./juena repos-ingest <id>`
+from there.
 
 ## Reading it back
 
@@ -97,8 +103,8 @@ in plan 02.
 ## What it produced
 
 Eight repositories, at `chunk_size: 3000` — [measured, not
-inherited](#how-big-should-a-chunk-be). `sampledb` is the ninth in the chatbot's config and
-is deliberately not here.
+inherited](#how-big-should-a-chunk-be). `sampledb` was once a ninth; juena-lab indexes it
+in its own instance instead.
 
 | source | chunks | with a `symbol` | doc | prose | files |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -179,7 +185,7 @@ makes this a sanity check, not a benchmark.
 | `juena_rag.parsers` | what each file declares, and on which lines |
 | `juena_rag.ingest.code.pipeline` | wires those to `Store.replace_source`; `juena-rag ingest-repo` calls it |
 | [`search.py`](search.py) | the other direction — `Store.search`, printed for a person |
-| [`repositories.yaml`](repositories.yaml) | which repositories, and how to treat their files |
+| [`repositories.yaml`](repositories.yaml) | an example config with one repository; JüNA's list is in juena-chatbot |
 
 The splitting is carried over from the chatbot's indexer rather than invented: chonkie's
 `CodeChunker` for Python and Markdown, langchain's `RecursiveCharacterTextSplitter` with

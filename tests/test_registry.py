@@ -5,6 +5,7 @@ from typing import Literal
 import pytest
 
 from juena_rag import (
+    BookChunk,
     Chunk,
     ChunkBatch,
     CodeChunk,
@@ -20,7 +21,7 @@ from juena_rag import (
 )
 
 
-def test_the_seven_category_classes_are_registered():
+def test_the_eight_category_classes_are_registered():
     assert set(registered_categories()) >= {
         "code",
         "dataset",
@@ -29,6 +30,7 @@ def test_the_seven_category_classes_are_registered():
         "presentation",
         "report",
         "wiki",
+        "book"
     }
 
 
@@ -139,3 +141,4 @@ def test_code_and_wiki_chunks_carry_no_layout_anchors():
 def test_laid_out_categories_inherit_the_anchors():
     assert issubclass(PaperChunk, LayoutChunk)
     assert issubclass(ManualChunk, LayoutChunk)
+    assert issubclass(BookChunk, LayoutChunk)

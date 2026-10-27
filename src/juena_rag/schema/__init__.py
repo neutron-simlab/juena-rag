@@ -39,6 +39,7 @@ from juena_rag.schema.models import (
     Table,
 )
 from juena_rag.schema.registry import (
+    BookChunk,
     CodeChunk,
     DatasetChunk,
     LayoutChunk,
@@ -85,6 +86,7 @@ __all__ = [
     "SourceRow",
     "Table",
     "WikiChunk",
+    "BookChunk",
     "chunk_class",
     "compute_content_hash",
     "derive_chunk_id",

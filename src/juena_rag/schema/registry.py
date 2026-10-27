@@ -196,3 +196,22 @@ class WikiChunk(Chunk):
     """
 
     category: Literal["wiki"] = "wiki"
+
+
+@register_chunk_class
+class BookChunk(LayoutChunk):
+    """A book, whole or one chapter of it.
+
+    The source's ``title`` is always the book's, however the book was split. The
+    chapter's title is the first entry of ``heading_path`` ; ``chapter`` is only
+    how it is cited.
+    """
+
+    category: Literal["book"] = "book"
+
+    isbn: str | None = None  # ISBN-13, digits only, e.g. "9780198567691"
+    chapter: str | None = None  # how the chapter is cited, e.g. "3", "Appendix A"
+    authors: list[str] = Field(default_factory=list)  # who writes the book/text
+    editors: list[str] = Field(default_factory=list)  # for an edited volume
+    year: int | None = None
+    publisher: str | None = None

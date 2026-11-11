@@ -142,3 +142,31 @@ def test_laid_out_categories_inherit_the_anchors():
     assert issubclass(PaperChunk, LayoutChunk)
     assert issubclass(ManualChunk, LayoutChunk)
     assert issubclass(BookChunk, LayoutChunk)
+
+
+def test_every_laid_out_category_takes_a_year_and_a_publisher():
+    for category, cls in registered_categories().items():
+        if issubclass(cls, LayoutChunk):
+            chunk = parse_chunk(
+                category, {"text": "…", "year": 2019, "publisher": "Springer"}
+            )
+            assert (chunk.year, chunk.publisher) == (2019, "Springer")
+
+
+def test_a_chunk_does_not_take_authors_they_belong_to_the_source():
+    """Every chunk of a document shares its byline, so it is said once."""
+    with pytest.raises(ValueError, match="authors"):
+        parse_chunk("paper", {"text": "We measured …", "authors": ["A. Ihsan"]})
+
+    source = SourceMetadata(
+        source_id="sans-book", category="book", revision="1", authors=["A. Ihsan"]
+    )
+    assert source.authors == ["A. Ihsan"]
+
+
+def test_a_book_chunk_names_its_chapter_and_how_it_is_cited():
+    chunk = BookChunk(
+        text="…", chapter_title="Neutron Optics", ref_chapter="Appendix A"
+    )
+
+    assert (chunk.chapter_title, chunk.ref_chapter) == ("Neutron Optics", "Appendix A")

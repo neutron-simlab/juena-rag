@@ -95,17 +95,21 @@ def parse_chunk(category: str, data: Any) -> Chunk:
 class LayoutChunk(Chunk):
     """A chunk from a document whose original layout was preserved.
 
-    Which node it was, which page it sat on, and where on that page. **Not a
+    Which node it was, which page it sat on, and where on that page -- and, for
+    every laid-out category alike, when and by whom it was published. **Not a
     category** -- undecorated, so it never registers; it exists to be inherited.
 
     Named for what it holds rather than for a parser: any layout-aware converter
-    produces these. A Markdown-sourced paper inherits it and leaves all three
-    empty, using ``start_line``/``end_line`` from the base instead.
+    produces these. A Markdown-sourced paper inherits it and leaves the three
+    anchors empty, using ``start_line``/``end_line`` from the base instead.
     """
 
     doc_item_refs: list[str] = Field(default_factory=list)  # e.g. "#/texts/104"
     pages: list[int] = Field(default_factory=list)
     provenance: list[PageProvenance] = Field(default_factory=list)
+
+    year: int | None = None
+    publisher: str | None = None
 
 
 @register_chunk_class
@@ -139,8 +143,6 @@ class PaperChunk(LayoutChunk):
     category: Literal["paper"] = "paper"
 
     doi: str | None = None
-    authors: list[str] = Field(default_factory=list)
-    year: int | None = None
     venue: str | None = None
     section: str | None = None  # "Methods", "Results"
 
@@ -162,7 +164,6 @@ class ReportChunk(LayoutChunk):
     category: Literal["report"] = "report"
 
     report_number: str | None = None  # how the report is cited
-    year: int | None = None
 
 
 @register_chunk_class
@@ -202,16 +203,13 @@ class WikiChunk(Chunk):
 class BookChunk(LayoutChunk):
     """A book, whole or one chapter of it.
 
-    The source's ``title`` is always the book's, however the book was split. The
-    chapter's title is the first entry of ``heading_path`` ; ``chapter`` is only
-    how it is cited.
+    The source's ``title`` is always the book's, however the book was split.
+    ``chapter_title`` names the chapter; ``ref_chapter`` is only how it is cited.
     """
 
     category: Literal["book"] = "book"
 
     isbn: str | None = None  # ISBN-13, digits only, e.g. "9780198567691"
-    chapter: str | None = None  # how the chapter is cited, e.g. "3", "Appendix A"
-    authors: list[str] = Field(default_factory=list)  # who writes the book/text
+    chapter_title: str | None = None  # e.g. "Neutron Optics"
+    ref_chapter: str | None = None  # how the chapter is cited, e.g. "3", "Appendix A"
     editors: list[str] = Field(default_factory=list)  # for an edited volume
-    year: int | None = None
-    publisher: str | None = None

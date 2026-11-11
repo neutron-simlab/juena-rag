@@ -14,6 +14,7 @@ CREATE TABLE sources (
     source_id       text PRIMARY KEY,
     category        text        NOT NULL,
     title           text,
+    authors         text[]      NOT NULL DEFAULT '{}',
     active_revision text,
 
     -- the artifact, for documents that have one; all NULL for code sources

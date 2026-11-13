@@ -468,13 +468,14 @@ def _search_sql(dimension: int) -> str:
 
 
 _SOURCE_UPSERT = """
-    INSERT INTO sources (source_id, category, title,
+    INSERT INTO sources (source_id, category, title, authors,
                          artifact_uri, artifact_format, artifact_hash, parser)
-    VALUES (%(source_id)s, %(category)s, %(title)s,
+    VALUES (%(source_id)s, %(category)s, %(title)s, %(authors)s,
             %(artifact_uri)s, %(artifact_format)s, %(artifact_hash)s, %(parser)s)
     ON CONFLICT (source_id) DO UPDATE SET
         category        = EXCLUDED.category,
         title           = EXCLUDED.title,
+        authors         = EXCLUDED.authors,
         artifact_uri    = EXCLUDED.artifact_uri,
         artifact_format = EXCLUDED.artifact_format,
         artifact_hash   = EXCLUDED.artifact_hash,

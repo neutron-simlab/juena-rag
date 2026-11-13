@@ -42,6 +42,7 @@ class SourceMetadata(BaseModel):
     revision: str = Field(min_length=1)
 
     title: str | None = None
+    authors: list[str] = Field(default_factory=list)  # who wrote the document
 
     # The original file, for documents that have one. All four are unset for code
     # sources, and that is correct rather than incomplete.
@@ -250,6 +251,7 @@ class SourceRow(BaseModel):
     active_revision: str | None = None  # unset before a source's first ingest
 
     title: str | None = None
+    authors: list[str] = Field(default_factory=list)
 
     artifact_uri: str | None = None
     artifact_format: str | None = None  # widened; see the docstring

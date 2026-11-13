@@ -141,6 +141,12 @@ def test_the_source_row_leaves_active_revision_alone():
     assert "active_revision" not in row
 
 
+def test_the_source_row_carries_the_authors():
+    row = source_row(a_source(authors=["A. Ihsan", "N. K. Fatima"]))
+
+    assert row["authors"] == ["A. Ihsan", "N. K. Fatima"]
+
+
 # --------------------------------------------------------------------------- #
 # Against a real database
 # --------------------------------------------------------------------------- #
@@ -368,6 +374,15 @@ def test_register_source_declares_one_with_no_content_yet(store):
 
     assert len(catalogue) == 1
     assert catalogue[0].active_revision is None
+
+
+def test_a_sources_authors_come_back_in_order(store):
+    store.register_source(a_source(authors=["A. Ihsan", "N. K. Fatima"]))
+    store.register_source(a_source(source_id="no-byline"))
+
+    authors = {source.source_id: source.authors for source in store.list_sources()}
+
+    assert authors == {"kws1-manual": ["A. Ihsan", "N. K. Fatima"], "no-byline": []}
 
 
 def test_get_structure_resolves_only_the_current_revision(store):

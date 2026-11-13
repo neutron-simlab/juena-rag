@@ -121,6 +121,7 @@ def source_row(source: SourceMetadata) -> dict[str, Any]:
         "source_id": source.source_id,
         "category": source.category,
         "title": source.title,
+        "authors": source.authors,
         "artifact_uri": source.artifact_uri,
         "artifact_format": source.artifact_format,
         "artifact_hash": source.artifact_hash,

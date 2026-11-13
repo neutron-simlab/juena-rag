@@ -9,7 +9,7 @@ and deliberately does not inherit from it: a row is not a valid declaration, and
 letting one be accepted as the other is exactly the mistake this split prevents.
 
 Extending :class:`Chunk` for your own kind of document happens in
-:mod:`juena_rag.schema.registry`, which has seven worked examples.
+:mod:`juena_rag.schema.registry`, which has eight worked examples.
 """
 
 from datetime import datetime
@@ -97,7 +97,6 @@ class Table(BaseModel):
     row_offset: int | None = None
     n_rows: int | None = None
 
-    # Validator to check whether the data is aligned with the column descriptors
     @model_validator(mode="after")
     def _rows_align_with_descriptors(self) -> Self:
         if not self.rows:
@@ -213,7 +212,7 @@ class Chunk(BaseModel):
 
     @model_validator(mode="after")
     def _line_range_is_coherent(self) -> Self:
-        """Validation rule 3."""
+        """Refuse an end line without a start, or before its start."""
         check_range(self.start_line, self.end_line, "start_line", "end_line")
         return self
 
@@ -329,18 +328,14 @@ class SearchHit(ChunkRow):
     ``parse_chunk(hit.category, {…, **hit.extra})``. Only the distance is new.
     """
 
-    #: Cosine distance, so **smaller is closer** -- 0 is identical and 2 is
-    #: opposite. Deliberately not called ``score``: it is the raw number the
-    #: database computed, and inverting it into a similarity would claim the
-    #: vectors are unit-length, which is the embedding model's business and not
-    #: something this package can check. A reranker adds its own field beside
-    #: this one rather than overwriting it.
+    #: Cosine distance: smaller is closer, 0 is identical and 2 is opposite. The
+    #: raw number the database computed, not turned into a similarity, because
+    #: that would assume unit-length vectors, which this package cannot check.
     distance: float
 
-    #: The reranking model's relevance score, so **larger is more relevant**, on
-    #: that model's own scale. ``None`` when the search was not reranked -- see
-    #: ``SearchResult.reranked_by``. Kept apart from ``distance`` because the two
-    #: numbers mean different things and must never be compared with each other.
+    #: The reranking model's relevance score: larger is more relevant, on that
+    #: model's own scale. ``None`` when the search was not reranked. Never compare
+    #: it with ``distance``; the two numbers mean different things.
     rerank_score: float | None = None
 
 
@@ -348,8 +343,8 @@ class SearchResult(BaseModel):
     """The hits, and the documents they came from.
 
     Two lists rather than one, mirroring :class:`~juena_rag.schema.boundary.ChunkBatch`
-    on the write side: a handful of documents usually carry many hits, and the
-    navigator in plan 03 needs ``artifact_format`` and ``title``, which live on the
+    on the write side: a handful of documents usually carry many hits, and a
+    caller often needs ``artifact_format`` and ``title``, which live on the
     source. Join them with :meth:`source_of`.
     """
 
@@ -367,10 +362,19 @@ class SearchResult(BaseModel):
     rerank_error: str | None = None
 
     def source_of(self, hit: SearchHit) -> SourceRow:
-        """The document one hit came from.
+        """Return the document one hit came from.
 
-        Linear over ``sources``, which holds one entry per *document* rather than
-        per hit -- single digits in every real call.
+        A linear search over ``sources``, which holds one entry per document,
+        not per hit, so it stays short.
+
+        Args:
+            hit: A hit from this result.
+
+        Returns:
+            The source row with the hit's ``source_id``.
+
+        Raises:
+            KeyError: The hit's source is not in this result.
         """
         for source in self.sources:
             if source.source_id == hit.source_id:

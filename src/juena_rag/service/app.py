@@ -1,9 +1,8 @@
 """The endpoints: five of them, each one call to a `Store` method.
 
-Needs the ``[serve]`` extra. The rule this file exists to keep is plan 02's --
-a handler deserialises, calls exactly one method and serialises -- so a question
-asked over the network and the same question asked through the library can never
-be answered two different ways.
+Needs the ``[serve]`` extra. Each handler reads the request, calls exactly one
+``Store`` method and returns its result, so a question asked over the network
+and the same question asked through the library always get the same answer.
 """
 
 from collections.abc import AsyncIterator
@@ -44,14 +43,21 @@ def create_app(store: Store, *, max_concurrency: int | None = None) -> FastAPI:
     The store is a parameter rather than something built here: it holds a
     connection pool that has to outlive a request and be closed by whoever opened
     it, which is :mod:`juena_rag.service.cli` in production and a fixture in tests.
+
+    Args:
+        store: An already-open store.
+        max_concurrency: How many requests may be inside a handler at once.
+            None keeps anyio's default.
+
+    Returns:
+        The FastAPI application.
     """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Every handler below is `def`, not `async def`, so each one runs in
-        # anyio's threadpool -- which is what keeps a blocking psycopg call off
-        # the event loop. How many may run at once is the only thing to set here,
-        # and it has to happen inside the loop, which is why it is not in the CLI.
+        # Every handler below is `def`, not `async def`, so each runs in anyio's
+        # thread pool, which keeps a blocking psycopg call off the event loop. The
+        # thread limit must be set inside the running loop, so here, not in the CLI.
         if max_concurrency is not None:
             limiter = anyio.to_thread.current_default_thread_limiter()
             limiter.total_tokens = max_concurrency

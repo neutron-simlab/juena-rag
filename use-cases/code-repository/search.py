@@ -22,6 +22,13 @@ def describe(hit) -> str:
     Code names the definition it sits in; prose names the headings above it. Both
     live in ``extra`` rather than in columns -- they belong to some categories of
     chunk, not to every chunk.
+
+    Args:
+        hit: One search hit.
+
+    Returns:
+        The distance, ``file:line``, the enclosing symbol or headings, and
+        ``(doc)`` for documentation.
     """
     where = f"{hit.source_uri}:{hit.extra.get('start_line', '?')}"
     context = hit.extra.get("symbol") or " > ".join(hit.extra.get("heading_path") or [])
@@ -33,6 +40,12 @@ def describe(hit) -> str:
 
 
 def main() -> int:
+    """Search the corpus with the question on the command line and print the hits.
+
+    Returns:
+        The exit code: 1 when ``JUENA_RAG_DSN`` is unset or nothing matched,
+        otherwise 0.
+    """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("query", help="a question, in any language the model knows")
     parser.add_argument(

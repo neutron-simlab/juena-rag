@@ -1,12 +1,11 @@
 """juena-rag -- chunk schema, storage and retrieval for the JCNS knowledge base.
 
-The package owns one thing: *a chunk, once it has been cleaned, gets stored,
-versioned, searched and cited correctly.* Parsing and chunking stay with whoever
-knows the document format.
+The package stores, versions, searches and cites chunks that are already
+cleaned. Parsing and chunking stay with whoever knows the document format.
 
 The base install is pydantic, plus tree-sitter for :mod:`juena_rag.parsers`;
-storage arrives with the ``[store]`` extra, the web layer with ``[serve]`` and
-the code-repository pipeline with ``[ingest]``.
+storage needs the ``[store]`` extra, the web layer ``[serve]`` and the
+code-repository pipeline ``[ingest]``.
 """
 
 from juena_rag.schema import (

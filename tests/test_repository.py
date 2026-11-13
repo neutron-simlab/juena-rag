@@ -81,11 +81,11 @@ def test_a_docs_path_entry_naming_a_file_covers_only_that_file():
 
 
 def test_the_jscatter_docs_paths_that_shipped_match_nothing():
-    """The bug this use case found, kept as a test so it cannot come back.
+    """Docs paths that are not in the repository match nothing, without failing.
 
-    The chatbot's config names `README.md` and `docs/`; jscatter has `README.rst`
-    and `src/jscatter/doc/`. Nothing failed -- every chunk simply came out
-    `is_doc=False`, documentation included.
+    `README.md` and `docs/` against jscatter's `README.rst` and `src/jscatter/doc/`
+    raise no error -- every chunk simply comes out `is_doc=False`, documentation
+    included.
     """
     stale = a_config(docs_paths=["README.md", "docs/"])
     assert not is_doc(stale, "README.rst")

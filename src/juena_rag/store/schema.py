@@ -33,20 +33,34 @@ class VectorExtensionMissing(SchemaError):
 
 
 def read_ddl() -> str:
-    """Return ``ddl.sql`` as it ships, placeholder and all.
+    """Read ``ddl.sql`` as it ships.
 
     Read through :mod:`importlib.resources` rather than by path, so it also works
     from an installed wheel where the file is not next to a directory listing.
+
+    Returns:
+        The SQL text, placeholder and all.
     """
     return files("juena_rag.store").joinpath("ddl.sql").read_text(encoding="utf-8")
 
 
 def render_ddl(dimension: int) -> str:
-    """Return the DDL with the embedding width filled in.
+    """Fill the embedding width into the DDL.
 
     The width is checked to be a plain positive integer before it is substituted,
     which is what makes writing it straight into the SQL safe -- pgvector cannot
     take it as a query parameter.
+
+    Args:
+        dimension: The embedding width, from 1 to :data:`MAX_DIMENSION`.
+
+    Returns:
+        The SQL, ready to run.
+
+    Raises:
+        TypeError: If ``dimension`` is not an int, or is a bool.
+        ValueError: If ``dimension`` is outside 1 to :data:`MAX_DIMENSION`.
+        SchemaError: If ``ddl.sql`` has no placeholder to fill.
     """
     # `True` passes an `isinstance(..., int)` check in Python and would render
     # `vector(True)`, so booleans are excluded explicitly.
@@ -75,9 +89,18 @@ def apply_ddl(
 ) -> None:
     """Create the tables and indexes in one transaction, or change nothing.
 
-    ``create_extension`` defaults to off because ``CREATE EXTENSION vector`` needs
-    superuser rights, which an application account on a managed cluster will not
-    have -- there, an administrator runs it once and this only checks it happened.
+    Args:
+        connection: An open database connection.
+        dimension: The embedding width to fix into the ``embedding`` column.
+        create_extension: Run ``CREATE EXTENSION vector`` first. Off by default
+            because it needs superuser rights, which an application account on
+            a managed cluster will not have -- there, an administrator runs it
+            once and this only checks it happened.
+
+    Raises:
+        VectorExtensionMissing: If the extension is missing and
+            ``create_extension`` is off.
+        SchemaAlreadyApplied: If either table already exists.
     """
     with connection.transaction():
         if create_extension:

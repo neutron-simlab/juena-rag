@@ -17,13 +17,19 @@ from pathlib import Path
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 
-#: Where clones live, relative to wherever the command runs. From a juena-rag
-#: checkout this is the same `data/repos` the old use-case script used.
+#: Where clones live, relative to wherever the command runs.
 DEFAULT_CACHE_DIR = Path("data/repos")
 
 
 def main(argv: list[str] | None = None) -> int:
-    """The console script. Returns the process's exit code."""
+    """Run the ``juena-rag`` console script.
+
+    Args:
+        argv: The command-line arguments. None means ``sys.argv``.
+
+    Returns:
+        The process's exit code.
+    """
     parser = argparse.ArgumentParser(
         prog="juena-rag", description="The JCNS knowledge base: serve it, or fill it."
     )
@@ -148,11 +154,10 @@ def _serve(*, host: str, port: int, log_level: str) -> int:
         print(error, file=sys.stderr)
         return 2
 
-    # Two checks, in this order, because they catch different mistakes and both
-    # are far cheaper here than on the first real search: `verify_dimension`
-    # embeds one short string and asks the *model* whether the configured width is
-    # real, and `Store` then asks the *column* the same question. Neither can see
-    # what the other does, and a pod that fails either cannot serve a search.
+    # Two startup checks, far cheaper here than on the first real search:
+    # `verify_dimension` asks the model whether the configured width is real, and
+    # `Store` then asks the database column. Each catches a mistake the other
+    # cannot see, and a pod that fails either cannot serve a search.
     verify_dimension(embedder)
     print(
         f"embedding with {embedder.metadata.model}, "

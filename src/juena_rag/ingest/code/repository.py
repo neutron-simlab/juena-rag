@@ -1,13 +1,11 @@
 """Getting a repository onto disk, and deciding which of its files to index.
 
 Everything here is git and the filesystem -- no chunking, no embedding, no
-database. Carried over from the chatbot's ``repo_manager.py`` and ``repo_config.py``
-with the manifest and diff machinery removed, since this pipeline always re-indexes
-a whole repository rather than the files that changed.
+database. There is no change tracking: the pipeline always re-indexes the whole
+repository, not only the files that changed.
 
-The ``repositories.yaml`` belongs to whoever runs the ingest -- juena-lab keeps its
-own -- and it decides how the files are split. juena-rag reads it and holds no
-chunk size of its own.
+The ``repositories.yaml`` belongs to whoever runs the ingest, and it decides how
+the files are split. juena-rag reads it and holds no chunk size of its own.
 """
 
 import fnmatch
@@ -44,7 +42,12 @@ DEFAULT_MAX_FILE_BYTES = 524_288
 
 @dataclass
 class RepoSource:
-    """Where a repository is cloned from."""
+    """Where a repository is cloned from.
+
+    Attributes:
+        url: The address to clone from.
+        branch: The branch to index.
+    """
 
     url: str
     branch: str = "main"
@@ -54,13 +57,24 @@ class RepoSource:
 class RepoConfig:
     """One repository, and the rules for which of its files get indexed.
 
-    The same field names the chatbot's ``config/repositories.yaml`` uses, so an
+    The field names match juena-chatbot's ``config/repositories.yaml``, so an
     entry can be copied between the two files unchanged.
 
-    ``chunk_size`` and ``chunk_overlap`` have no default on purpose. They decide
-    every chunk boundary, so the caller's config states them; a default here would
-    quietly win whenever someone forgot, and nobody would notice until search
-    results changed.
+    ``chunk_size`` and ``chunk_overlap`` have no default: they decide every chunk
+    boundary, and a default would quietly apply whenever a config forgot them.
+
+    Attributes:
+        id: The repository's id; becomes the source's ``source_id``.
+        name: A readable name; becomes the source's title.
+        chunk_size: The largest chunk, in characters.
+        chunk_overlap: How many characters consecutive chunks may share.
+        description: Free text about the repository.
+        source: Where the repository is cloned from.
+        include_globs: Which files to index.
+        exclude_globs: Which files to skip; these win over ``include_globs``.
+        max_file_bytes: Files bigger than this are skipped.
+        docs_paths: Files or directories that hold documentation; see
+            :func:`is_doc`.
     """
 
     id: str
@@ -76,7 +90,18 @@ class RepoConfig:
 
 
 def load_repositories(path: Path) -> dict[str, RepoConfig]:
-    """Read ``repositories.yaml`` into one :class:`RepoConfig` per entry, by id."""
+    """Read a ``repositories.yaml``.
+
+    Args:
+        path: The file to read.
+
+    Returns:
+        One :class:`RepoConfig` per entry, keyed by id.
+
+    Raises:
+        ValueError: If an entry has no ``source.url``, ``chunk_size`` or
+            ``chunk_overlap``, or an id appears twice.
+    """
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
     configs: dict[str, RepoConfig] = {}
@@ -117,11 +142,7 @@ def load_repositories(path: Path) -> dict[str, RepoConfig]:
 
 
 def _git(*arguments: str) -> str:
-    """Run one git command and return its output, raising with stderr if it fails.
-
-    Raising rather than returning a code, because every caller here would have to
-    turn a non-zero exit into an exception anyway.
-    """
+    """Run one git command and return its output, raising with stderr if it fails."""
     # `check=False` on purpose: the raise below carries git's own stderr, which
     # `CalledProcessError` does not.
     result = subprocess.run(
@@ -136,10 +157,20 @@ def _git(*arguments: str) -> str:
 
 
 def sync(config: RepoConfig, cache_dir: Path) -> Path:
-    """Clone the repository, or bring an existing clone up to date. Returns its root.
+    """Clone the repository, or bring an existing clone up to date.
 
     Shallow (``--depth 1``) because nothing here reads history -- only the files at
     the tip and the sha naming them.
+
+    Args:
+        config: The repository's settings.
+        cache_dir: The directory that holds every clone.
+
+    Returns:
+        The clone's root directory.
+
+    Raises:
+        RuntimeError: If a git command fails.
     """
     root = cache_dir / config.id
 
@@ -168,7 +199,17 @@ def sync(config: RepoConfig, cache_dir: Path) -> Path:
 
 
 def current_revision(root: Path) -> str:
-    """The sha of whatever is checked out. This is a source's ``revision``."""
+    """Read the sha of whatever is checked out.
+
+    Args:
+        root: The clone's root directory.
+
+    Returns:
+        The sha, which becomes the source's ``revision``.
+
+    Raises:
+        RuntimeError: If git fails.
+    """
     return _git("-C", str(root), "rev-parse", "HEAD").strip()
 
 
@@ -181,8 +222,7 @@ def _matches(rel_path: str, pattern: str) -> bool:
     """Match a path against one glob, treating ``**/`` as *zero* or more directories.
 
     ``fnmatch`` reads ``**/*.py`` as requiring at least one directory, so a
-    top-level ``setup.py`` would not match. Retrying without the prefix is what
-    makes the pattern mean what everybody expects it to.
+    top-level ``setup.py`` would not match; hence the retry without the prefix.
     """
     if fnmatch.fnmatch(rel_path, pattern):
         return True
@@ -192,17 +232,32 @@ def _matches(rel_path: str, pattern: str) -> bool:
 
 
 def wanted(config: RepoConfig, rel_path: str) -> bool:
-    """Does this path pass the include/exclude rules? Exclusions win."""
+    """Check a path against the include and exclude rules. Exclusions win.
+
+    Args:
+        config: The repository's settings.
+        rel_path: The file's path inside the repository.
+
+    Returns:
+        True if the file should be indexed.
+    """
     if any(_matches(rel_path, pattern) for pattern in config.exclude_globs):
         return False
     return any(_matches(rel_path, pattern) for pattern in config.include_globs)
 
 
 def is_doc(config: RepoConfig, rel_path: str) -> bool:
-    """Is this file documentation rather than source?
+    """Tell whether a file is documentation rather than source.
 
     An entry in ``docs_paths`` is either an exact file or a directory prefix, so
     ``doc/`` covers everything beneath it and ``README.rst`` covers only itself.
+
+    Args:
+        config: The repository's settings.
+        rel_path: The file's path inside the repository.
+
+    Returns:
+        True if an entry in ``docs_paths`` covers the file.
     """
     for entry in config.docs_paths:
         if rel_path == entry or rel_path.startswith(entry.rstrip("/") + "/"):
@@ -211,10 +266,18 @@ def is_doc(config: RepoConfig, rel_path: str) -> bool:
 
 
 def list_files(config: RepoConfig, root: Path) -> list[str]:
-    """Every repo-relative path worth indexing, sorted.
+    """List the files worth indexing.
 
     Sorted so two runs over the same revision produce the same ``chunk_index`` for
     the same chunk -- ``os.walk`` returns whatever order the filesystem gives it.
+
+    Args:
+        config: The repository's settings.
+        root: The clone's root directory.
+
+    Returns:
+        Every repository-relative path that passes the rules and the size
+        limit, sorted.
     """
     found: list[str] = []
     for directory, _subdirectories, filenames in os.walk(root):
@@ -241,6 +304,16 @@ def read_file(root: Path, rel_path: str) -> str:
 
     ``errors="replace"`` rather than strict: a stray non-UTF-8 byte in one file of
     two hundred should cost that file's characters, not the whole ingest.
+
+    Args:
+        root: The clone's root directory.
+        rel_path: The file's path inside the repository.
+
+    Returns:
+        The file's text.
+
+    Raises:
+        ValueError: If the path resolves outside the repository.
     """
     path = (root / rel_path).resolve()
     if not path.is_relative_to(root.resolve()):

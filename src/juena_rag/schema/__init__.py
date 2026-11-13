@@ -1,7 +1,7 @@
 """The chunk schema.
 
-A **chunk** is one piece of text that gets embedded, stored and searched as a
-unit; a **source** is the document it came from. An ingestion pipeline builds a
+A chunk is one piece of text that gets embedded, stored and searched as a
+unit; a source is the document it came from. An ingestion pipeline builds a
 ``ChunkBatch`` -- one source and its chunks -- and hands it over; the store's
 `sources` and `chunks` tables hold each one back as a ``SourceRow`` or a
 ``ChunkRow``.
@@ -11,7 +11,7 @@ Four modules, each importing only the ones above it:
 ===================== =========================================================
 :mod:`vocabulary`     the closed vocabularies and the pure functions
 :mod:`models`         ``SourceMetadata``, ``SourceRow``, ``Chunk``, ``ChunkRow``
-:mod:`registry`       how a category is claimed, plus seven worked examples
+:mod:`registry`       how a category is claimed, plus eight worked examples
 :mod:`boundary`       ``ChunkBatch``, ``SearchRequest``
 ===================== =========================================================
 

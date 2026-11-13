@@ -1,7 +1,7 @@
 """The read half, asserted against both stores at once.
 
 `Store` reads the database and `HttpStore` reads the service that reads the
-database, and plan 04 swaps one for the other by changing a constructor line. That
+database, and a caller swaps one for the other by changing a constructor line. That
 only works if they stay identical, so this file checks the two things that could
 drift: the *shape* -- method names, argument names, return annotations, which needs
 no database -- and the *behaviour*, which runs every read twice.
@@ -23,8 +23,8 @@ from juena_rag.store.pgvector import Store
 #: The contract. `HttpStore` has exactly these and nothing else of `Store`'s.
 READ_METHODS = ("search", "list_sources", "get_structure", "status", "ping")
 
-#: Removed from the network by plan 02's S2, so their absence is the design and
-#: not an omission -- ingestion opens the database directly, as a job.
+#: Not offered over the network, on purpose: ingestion opens the database
+#: directly, as a job.
 WRITE_METHODS = (
     "register_source",
     "replace_source",

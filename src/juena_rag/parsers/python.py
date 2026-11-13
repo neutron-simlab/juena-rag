@@ -10,10 +10,16 @@ from juena_rag.parsers.definition import Definition
 
 
 def outline(source: str) -> list[Definition]:
-    """Every ``def`` and ``class``, in source order, innermost last.
+    """List the ``def`` and ``class`` statements in a Python file.
 
     A file that does not parse yields nothing rather than raising: a syntax error
     in one file of two hundred should cost that file its symbols, not the ingest.
+
+    Args:
+        source: The file's text.
+
+    Returns:
+        Every definition, in source order, innermost last.
     """
     try:
         tree = ast.parse(source)

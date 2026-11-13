@@ -1,7 +1,7 @@
 """The models -- `juena_rag.schema.models`.
 
-Validation rules 1, 2 and 3 live here, because each is answerable by one chunk
-on its own. Rules 4 to 7 need the source too, so they are in test_boundary.py.
+The checks one chunk can answer on its own live here. The checks that also need
+the chunk's source are in test_boundary.py.
 """
 
 from datetime import UTC, datetime
@@ -156,7 +156,7 @@ def test_one_row_of_a_large_table_is_the_same_kind():
 
 
 def test_a_window_of_rows_is_expressible():
-    """The case the old table/table_row pair could not say at all."""
+    """A slice of a larger table, neither one row nor the whole table."""
     chunk = Chunk(
         text="rows 40 to 59 of the calibration table",
         chunk_kind="table",

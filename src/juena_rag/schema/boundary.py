@@ -1,9 +1,9 @@
 """What crosses into the store from outside: a batch going in, a query coming to it.
 
 :class:`ChunkBatch` is the only thing an ingestion pipeline has to build, and it
-is where the four rules needing to see *both* are checked -- a chunk cannot tell
-on its own whether its source names an artifact. :class:`SearchRequest` is the
-other direction and much smaller: the arguments of ``Store.search``, as an object,
+is where the rules that need to see both the source and its chunks are checked:
+a chunk cannot tell on its own whether its source names an artifact.
+:class:`SearchRequest` is the arguments of ``Store.search`` as an object,
 because over HTTP they arrive as somebody else's JSON.
 """
 
@@ -21,8 +21,8 @@ def _coerce_chunk(value: Any, target: type[Chunk], category: str, index: int) ->
         if isinstance(value, target):
             return value
         if type(value) is Chunk:
-            # Rule 4: a bare Chunk is upgraded, not rejected. It holds only base
-            # fields, which the category class also has, so nothing is lost.
+            # A bare Chunk is upgraded, not rejected. It holds only base fields,
+            # which the category class also has, so nothing is lost.
             return target.model_validate(value.model_dump())
         raise ValueError(
             f"chunk {index} is a {type(value).__name__}, but the batch declares "
@@ -40,9 +40,9 @@ class ChunkBatch(BaseModel):
 
     source: SourceMetadata
 
-    #: ``SerializeAsAny`` is load-bearing. Pydantic serialises through the
-    #: *declared* type, so a plain ``list[Chunk]`` would drop every
-    #: category-specific field on the way to the database, silently.
+    #: ``SerializeAsAny`` is required: pydantic serialises through the declared
+    #: type, so a plain ``list[Chunk]`` would silently drop every
+    #: category-specific field on the way to the database.
     chunks: list[SerializeAsAny[Chunk]]
 
     mode: Literal["replace", "upsert"] = "replace"
@@ -84,10 +84,10 @@ class ChunkBatch(BaseModel):
 
     @model_validator(mode="after")
     def _batch_agrees_with_source(self) -> Self:
-        """Validation rules 5, 6 and 7."""
-        # Rule 7. The atomic replace deletes every chunk of the source, then
-        # inserts the batch -- so an empty batch deletes the source's content and
-        # reports success. delete_source() exists for the deliberate case.
+        """Check the chunks against their source and the batch's mode."""
+        # The replace deletes every chunk of the source, then inserts the batch,
+        # so an empty batch would delete the source's content and report
+        # success. delete_source() exists for the deliberate case.
         if self.mode == "replace" and not self.chunks:
             raise ValueError(
                 f"mode='replace' with no chunks would delete every chunk of source "
@@ -99,7 +99,7 @@ class ChunkBatch(BaseModel):
             refs: list[str] = getattr(chunk, "doc_item_refs", None) or []
             pages: list[int] = getattr(chunk, "pages", None) or []
 
-            # Rule 5. Coordinates into a file require the file to be named.
+            # Coordinates into a file require the file to be named.
             if (refs or pages) and not self.source.artifact_uri:
                 carried = " and ".join(
                     name
@@ -111,7 +111,7 @@ class ChunkBatch(BaseModel):
                     "artifact_uri, so the coordinates point at nothing"
                 )
 
-            # Rule 6. Node addresses exist only in a parsed document tree.
+            # Node addresses exist only in a parsed document tree.
             if refs and self.source.artifact_format != "docling-json":
                 raise ValueError(
                     f"chunk {index} sets doc_item_refs but artifact_format is "
@@ -132,9 +132,9 @@ class SearchRequest(BaseModel):
     that ``HttpStore`` can build one without installing a web framework.
     """
 
-    # A misspelled filter is refused rather than dropped. Without this, `{"source":
-    # ["vitess"]}` -- singular, which is the natural typo -- would search the whole
-    # corpus and return a plausible answer with no filter applied and no error.
+    # A misspelled filter is refused rather than dropped. Otherwise `{"source":
+    # [...]}` (singular, the natural typo) would search the whole corpus and
+    # return a plausible answer with no filter applied and no error.
     model_config = {"extra": "forbid"}
 
     query: str = Field(min_length=1)
@@ -144,8 +144,8 @@ class SearchRequest(BaseModel):
     chunk_kinds: list[str] | None = None
 
     #: How many candidates the index retrieves, and how many survive to the caller.
-    #: Left unset, the service's own defaults apply -- a caller does not have to
-    #: know them, and cannot be given a stale copy of them.
+    #: Left unset, the service's own defaults apply, so a caller cannot hold a
+    #: stale copy of them.
     k: int | None = Field(default=None, gt=0)
     n: int | None = Field(default=None, gt=0)
 

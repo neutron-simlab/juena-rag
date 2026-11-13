@@ -34,10 +34,16 @@ def _title(node) -> str | None:
 
 
 def outline(source: str) -> list[Definition]:
-    """Every heading, in source order, deepest last.
+    """List the headings in a LaTeX file.
 
     A section's range runs to the start of the next one at its level, which is
     what the grammar's own nesting already gives.
+
+    Args:
+        source: The file's text.
+
+    Returns:
+        Every heading, in source order, deepest last.
     """
     tree = get_parser("latex").parse(source.encode("utf-8", errors="replace"))
 

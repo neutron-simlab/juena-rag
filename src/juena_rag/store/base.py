@@ -14,11 +14,11 @@ from pydantic import BaseModel
 
 from juena_rag.schema.models import SearchResult, SourceRow
 
-#: How many candidates the index retrieves, and how many survive to the caller.
-#: Measured over a million rows: k=100 gives 96.4% recall@10, k=200 gives 99.2%,
-#: and above 200 the curve stops paying. At ~10k chunks k=100 measured ~99.8%;
-#: the corpus is now ~38k and has not been re-measured -- so this is a floor to
-#: raise as the corpus grows, not a ceiling.
+#: How many candidates the index retrieves (k), and how many survive to the
+#: caller (n). Over a million rows, k=100 gives 96.4% recall@10 (the share of
+#: the true ten closest chunks that come back), k=200 gives 99.2%, and above 200
+#: it barely improves. At ~10k chunks k=100 gave ~99.8%; the corpus is now ~38k
+#: and not re-measured, so raise k as the corpus grows.
 DEFAULT_K = 100
 DEFAULT_N = 5
 
@@ -75,13 +75,12 @@ class StoreStatus(BaseModel):
 
 
 class ReadableStore(Protocol):
-    """The five methods a caller needs to *read* the corpus.
+    """The five methods a caller needs to read the corpus.
 
-    Both stores implement exactly these, which is what lets an application swap
-    one constructor line: ``Store`` also writes, ``HttpStore`` cannot and is not
-    meant to. Deliberately not ``runtime_checkable``, for the same reason
-    :class:`~juena_rag.embedding.base.Embedder` is not -- an ``isinstance`` check
-    against a protocol only asks whether the attributes exist.
+    Both stores implement these, so an application switches between them by
+    changing one constructor line; only ``Store`` also writes. Not
+    ``runtime_checkable``, for the same reason as
+    :class:`~juena_rag.embedding.base.Embedder`.
     """
 
     def search(
@@ -95,21 +94,48 @@ class ReadableStore(Protocol):
         n: int | None = None,
         rerank: bool = False,
     ) -> SearchResult:
-        """The ``n`` chunks closest to ``query``, among ``k`` the index retrieved.
+        """Find the ``n`` chunks closest to ``query``, among ``k`` the index retrieved.
 
-        With ``rerank``, a reranking model re-orders the closest candidates first.
+        Args:
+            query: The question.
+            sources: Only these source ids. None means all.
+            categories: Only these categories. None means all.
+            chunk_kinds: Only these chunk kinds. None means all.
+            k: How many candidates the index retrieves. None means the
+                store's default.
+            n: How many hits to return. None means the store's default.
+            rerank: Have a reranking model re-order the closest candidates first.
+
+        Returns:
+            The hits and the documents they came from.
         """
 
     def list_sources(self) -> list[SourceRow]:
-        """The catalogue, newest first."""
+        """List the catalogue.
+
+        Returns:
+            Every source, newest first.
+        """
 
     def get_structure(
         self, source_id: str, *, revision: str | None = None
     ) -> SourceRow | None:
-        """One document, if it is still at the revision asked for."""
+        """Look up one document, if it is still at the revision asked for.
+
+        Args:
+            source_id: The source's id.
+            revision: The revision the caller holds.
+
+        Returns:
+            The source's row, or None if it is absent or has moved on.
+        """
 
     def status(self) -> StoreStatus:
-        """What is stored. Scans the chunks table, so not a readiness probe."""
+        """Report what is stored. Scans the chunks table, so not a readiness probe.
+
+        Returns:
+            The counts and the embedding models in use.
+        """
 
     def ping(self) -> None:
         """Reach the store and come straight back. Raises if it cannot."""

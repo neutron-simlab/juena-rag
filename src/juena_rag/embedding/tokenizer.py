@@ -1,11 +1,10 @@
 """Counting tokens with the model's own vocabulary -- for whoever writes chunks.
 
-**A tool for callers, not a check this package runs**: the embedder sends text
-ready to embed, but "ready" means "under ``EmbeddingMetadata.max_input_tokens``",
-and a chunker cannot honour a limit it has no way to measure. Counting characters
-instead is wrong in *both* directions -- tokens are built out of bytes, so German,
-Japanese or a stray emoji cost more tokens than characters and walk straight past
-a ceiling that was supposed to be conservative.
+A tool for callers, not a check this package runs: a chunk must stay under
+``EmbeddingMetadata.max_input_tokens``, and a chunker needs this to measure it.
+Counting characters instead is not safe: tokens are built from bytes, so German,
+Japanese or an emoji can cost more tokens than characters and pass a limit that
+looked conservative.
 """
 
 from juena_rag.embedding.base import EmbeddingError
@@ -18,9 +17,8 @@ except ImportError:  # pragma: no cover - depends on the install, not the code
         "installed. `pip install 'juena-rag[embed]'`."
     ) from None
 
-#: Where the vocabulary file is published -- a *download location*, not the
-#: model's identity. This string never reaches the database; the model is called
-#: ``alias-qwen3-8b-embeddings`` everywhere it matters.
+#: Where the vocabulary file is downloaded from, not the model's name: that is
+#: ``alias-qwen3-8b-embeddings``, and this string never reaches the database.
 DEFAULT_TOKENIZER_REPO = "Qwen/Qwen3-Embedding-8B"
 
 #: The file to point ``tokenizer_path`` at, if you are shipping one.
@@ -34,9 +32,7 @@ class TokenizerUnavailable(EmbeddingError):
 class ModelTokenCounter:
     """Counts tokens exactly as the embedding model does.
 
-    Loading takes a second or two and happens once; counting afterwards is fast
-    enough to be uninteresting, because the work happens in Rust rather than in
-    Python.
+    Loading takes a second or two and happens once; counting afterwards is fast.
     """
 
     def __init__(
@@ -44,12 +40,18 @@ class ModelTokenCounter:
         tokenizer_path: str | None = None,
         repo_id: str = DEFAULT_TOKENIZER_REPO,
     ) -> None:
-        """
-        :param tokenizer_path: a local ``tokenizer.json``. Use this in a container
-            image or anywhere without a route to Hugging Face, baked in at build
-            time so nothing has to be fetched at startup.
-        :param repo_id: where to download the vocabulary from when no local file
-            is given. Cached after the first call.
+        """Initialize the counter and load the vocabulary.
+
+        Args:
+            tokenizer_path: A local ``tokenizer.json``. Use this in a container
+                image or anywhere without a route to Hugging Face, baked in at
+                build time so nothing has to be fetched at startup. None means
+                download from ``repo_id``.
+            repo_id: Where to download the vocabulary from when no local file is
+                given. Cached after the first call.
+
+        Raises:
+            TokenizerUnavailable: If the vocabulary cannot be loaded.
         """
         self.name = tokenizer_path or repo_id
         try:
@@ -68,9 +70,15 @@ class ModelTokenCounter:
             ) from exc
 
     def count_many(self, texts: list[str]) -> list[int]:
-        """How many tokens each text costs, in the order given.
+        """Count the tokens of each text.
 
         Special tokens are included, because the server counts them too.
+
+        Args:
+            texts: The texts to count.
+
+        Returns:
+            How many tokens each text costs, in the order given.
         """
         if not texts:
             return []

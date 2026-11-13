@@ -1,6 +1,6 @@
-"""How a category gets its name, and seven worked examples of claiming one.
+"""How a category gets its name, and eight worked examples of claiming one.
 
-A **category** says what kind of document a chunk came from. Each is claimed by a
+A category says what kind of document a chunk came from. Each is claimed by a
 :class:`Chunk` subclass adding the fields that kind of document needs::
 
     @register_chunk_class
@@ -8,8 +8,8 @@ A **category** says what kind of document a chunk came from. Each is claimed by 
         category: Literal["seminar"] = "seminar"
         speaker: str | None = None
 
-Write that in **your own code** and ``juena-rag`` validates a batch declaring
-``category="seminar"`` -- no edit to this package, no release. The seven classes
+Write that in your own code and ``juena-rag`` validates a batch declaring
+``category="seminar"`` -- no edit to this package, no release. The eight classes
 below are the ones shipped, and the examples to copy.
 """
 
@@ -27,12 +27,20 @@ _REGISTRY: dict[str, type[Chunk]] = {}
 def register_chunk_class(cls: type[Chunk]) -> type[Chunk]:
     """Register a chunk class under the ``category`` it pins. Use as a decorator.
 
-    A registry rather than a discriminated union, because a union closes the
-    vocabulary: adding a category would mean a release of this package.
+    A registry rather than a pydantic discriminated union, because a union is
+    fixed in this package: adding a category would need a new release. Explicit
+    rather than automatic on subclassing, so :class:`LayoutChunk` stays out by
+    not being decorated.
 
-    Explicit rather than automatic on subclassing, so registration is visible
-    where a reader is already looking -- and so :class:`LayoutChunk` stays out of
-    it by simply not being decorated.
+    Args:
+        cls: The :class:`Chunk` subclass to register.
+
+    Returns:
+        ``cls`` unchanged, so this works as a decorator.
+
+    Raises:
+        TypeError: If the class pins no category, or another class already
+            claims it.
     """
     field = cls.model_fields.get("category")
     category = field.default if field is not None else None
@@ -57,21 +65,46 @@ def register_chunk_class(cls: type[Chunk]) -> type[Chunk]:
 
 
 def registered_categories() -> dict[str, type[Chunk]]:
-    """Every category a chunk class has claimed, newest registration last."""
+    """List the registered categories.
+
+    Returns:
+        A copy of the registry: category name to class, newest registration
+        last.
+    """
     return dict(_REGISTRY)
 
 
 def chunk_class(category: str) -> type[Chunk]:
-    """The class for ``category``, or plain :class:`Chunk` if none is registered.
+    """Look up the chunk class for a category.
 
     Falling back is legitimate: a caller with no category-specific fields to
     carry should not have to define a class in order to say so.
+
+    Args:
+        category: The category name.
+
+    Returns:
+        The registered class, or plain :class:`Chunk` if none is registered.
     """
     return _REGISTRY.get(category, Chunk)
 
 
 def parse_chunk(category: str, data: Any) -> Chunk:
-    """Validate ``data`` as a chunk of ``category``."""
+    """Validate ``data`` as a chunk of ``category``.
+
+    Args:
+        category: The category the chunk belongs to.
+        data: The chunk's fields, such as a dict decoded from JSON.
+
+    Returns:
+        The chunk, as the category's class.
+
+    Raises:
+        ValueError: If the category is not registered and ``data`` is not a
+            valid plain :class:`Chunk`; the message lists the registered
+            categories.
+        ValidationError: If ``data`` is not valid for a registered category.
+    """
     target = chunk_class(category)
     try:
         return target.model_validate(data)
@@ -131,7 +164,7 @@ class CodeChunk(Chunk):
 
     @model_validator(mode="after")
     def _index_range_is_coherent(self) -> Self:
-        """Validation rule 3, for the character-offset pair."""
+        """Reject an end offset without a start, or before it."""
         check_range(self.start_index, self.end_index, "start_index", "end_index")
         return self
 

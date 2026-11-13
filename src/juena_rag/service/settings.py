@@ -1,9 +1,9 @@
 """What `juena-rag serve` reads from the environment, in one object.
 
-A plain dataclass with a ``from_env`` classmethod -- the same shape
-:meth:`BlabladorEmbedder.from_env <juena_rag.embedding.blablador.BlabladorEmbedder.from_env>`
-already has, so every setting is visible as a keyword argument and the
-environment is one way of filling them rather than the only way.
+A dataclass with a ``from_env`` classmethod, like
+:meth:`BlabladorEmbedder.from_env <juena_rag.embedding.blablador.BlabladorEmbedder.from_env>`:
+every setting is a keyword argument, and the environment is one way of filling
+them rather than the only way.
 """
 
 import os
@@ -15,14 +15,13 @@ from juena_rag.store.base import DEFAULT_RERANK_CANDIDATES
 DEFAULT_POOL_MIN_SIZE = 1
 DEFAULT_POOL_MAX_SIZE = 4
 
-#: How many requests may be inside a handler at once. This is anyio's own
-#: default, kept deliberately: the two numbers are *not* meant to match.
+#: How many requests may be inside a handler at once: anyio's own default, and
+#: not meant to match the pool size.
 #:
-#: A search embeds the question *before* it borrows a connection, so the ~200 ms
-#: round trip to Blablador occupies a thread and no connection, while the query
-#: itself holds one for about 4 ms. Ten threads per connection is therefore the
-#: shape of the work, and matching them at four would cap the service at four
-#: concurrent searches while the pool sat idle.
+#: A search embeds the question before it borrows a connection, so the ~200 ms
+#: round trip to Blablador holds a thread and no connection, while the query
+#: holds one for about 4 ms. Capping threads at the pool's four would allow only
+#: four concurrent searches while the pool sat idle.
 DEFAULT_MAX_CONCURRENCY = 40
 
 
@@ -32,22 +31,38 @@ class ServiceSettings:
 
     The model's own configuration stays in ``BLABLADOR_*`` and is read by the
     embedder, so there is one place each value is named rather than two.
+
+    Attributes:
+        dsn: Where pgvector is. The only setting with no default.
+        pool_min_size: The fewest database connections the pool keeps open.
+        pool_max_size: The most database connections the pool opens.
+        max_concurrency: How many requests may be inside a handler at once.
+        rerank_candidates: How many of the closest chunks the reranker re-reads,
+            for a search that asks for reranking. The reranking model itself is
+            ``BLABLADOR_RERANK_MODEL``.
     """
 
-    #: Where pgvector is. The only setting with no default.
     dsn: str
 
     pool_min_size: int = DEFAULT_POOL_MIN_SIZE
     pool_max_size: int = DEFAULT_POOL_MAX_SIZE
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY
 
-    #: How many of the closest chunks the reranker re-reads, for a search that
-    #: asks for reranking. The reranking model itself is ``BLABLADOR_RERANK_MODEL``.
     rerank_candidates: int = DEFAULT_RERANK_CANDIDATES
 
     @classmethod
     def from_env(cls, **overrides: object) -> "ServiceSettings":
-        """Build from the environment. Anything passed as a keyword wins."""
+        """Build from the ``JUENA_RAG_*`` environment variables.
+
+        Args:
+            **overrides: Settings that win over the environment.
+
+        Returns:
+            The settings.
+
+        Raises:
+            ValueError: If no DSN is set, or a number is not a whole number.
+        """
         settings: dict[str, object] = {}
 
         dsn = os.getenv("JUENA_RAG_DSN", "").strip()

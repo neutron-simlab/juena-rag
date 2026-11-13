@@ -49,7 +49,7 @@ def test_the_extension_decides_the_language():
     assert detect_language("src/jscatter/formel.py") == "python"
     assert detect_language("doc/source/sas.rst") == "rst"
     assert detect_language("src/dtr/fit.f90") == "fortran"
-    # Absent from the table until datreat's manual turned up chunked as source.
+    # In the table so a LaTeX manual, such as datreat's, is not chunked as source.
     assert detect_language("doc/NewManualBook/ManualDtr.tex") == "latex"
     assert detect_language("Makefile") == "other"
 
@@ -119,7 +119,7 @@ def test_a_fortran_chunk_is_named_for_its_subroutine():
 
 
 def test_latex_is_prose_carrying_a_heading_path_rather_than_a_symbol():
-    """Two separate mistakes it used to make: labelled `code_block`, and unstructured.
+    """LaTeX is labelled `text`, not `code_block`, and keeps its section structure.
 
     `chunk_kind` decides whether `--code-only` returns the manual, and a heading is
     a document's structure -- `symbol` is for a definition, which a section is not.
@@ -184,8 +184,7 @@ def test_every_chunk_covers_lines_in_order():
 def test_a_whitespace_only_chunk_is_dropped_rather_than_rejected_later():
     """`Chunk` refuses blank text, so a run of empty lines would fail the batch.
 
-    The chatbot never validated, so it never noticed; here it would stop an ingest
-    of two thousand chunks over one of them.
+    One blank chunk would stop an ingest of two thousand chunks.
     """
     chunks = split("code = 1\n" + "\n" * 400 + "more = 2\n", "a.py", chunk_size=50)
     assert chunks

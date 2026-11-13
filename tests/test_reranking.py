@@ -92,7 +92,7 @@ def test_scores_from_separate_requests_are_ranked_together():
 
 
 def test_a_model_that_is_temporarily_unavailable_is_a_rerank_failure():
-    """What both Blablador reranking aliases answered on 2026-10-20."""
+    """The 503 that Blablador's reranking aliases answer when the model is down."""
     reranker, _ = a_reranker(
         lambda request: httpx2.Response(
             503,

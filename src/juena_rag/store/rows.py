@@ -1,13 +1,8 @@
 """Turning a batch into rows -- the derivation, with no database in sight.
 
-The ``chunks`` table has seventeen columns and :class:`~juena_rag.schema.models.Chunk`
-has nine fields, none of them the embedding. This module is the twelve values in
-between, written as pure functions so a test can check every one of them without
-starting PostgreSQL.
-
-Of those seventeen, exactly one costs anything: the embedding, which is a network
-call and happens in :mod:`juena_rag.store.pgvector`. Everything here is a copy, a
-constant, or a hash.
+Pure functions, so a test can check every derived value without starting
+PostgreSQL. Only the embedding costs anything, a network call made in
+:mod:`juena_rag.store.pgvector`; everything here is a copy, a constant or a hash.
 """
 
 from typing import Any
@@ -47,6 +42,12 @@ def chunk_extra(chunk: Chunk) -> dict[str, Any]:
     :class:`~juena_rag.schema.models.Chunk` and none of them has a column, so the
     ones that *do* are listed in ``CHUNK_COLUMNS`` rather than derived -- deriving
     would drop those silently.
+
+    Args:
+        chunk: The chunk.
+
+    Returns:
+        Its fields without a column, as JSON values, leaving out unset ones.
     """
     return chunk.model_dump(
         mode="json",  # jsonb wants JSON types, not Python ones
@@ -62,11 +63,21 @@ def chunk_row(
     embedding: list[float],
     embedding_model: str,
 ) -> dict[str, Any]:
-    """One chunk's row, ready to insert. ``ingested_at`` is the database's.
+    """Build one chunk's row, ready to insert. ``ingested_at`` is the database's.
 
-    ``category`` comes from the *source*, not the chunk: a chunk has no say in it,
+    ``category`` comes from the source, not the chunk: a chunk has no say in it,
     so a document cannot hold a paragraph filed under a different category than
     the rest of it.
+
+    Args:
+        source: The source the chunk belongs to.
+        chunk: The chunk.
+        chunk_index: The chunk's position within the source.
+        embedding: The chunk's vector.
+        embedding_model: The name of the model that made the vector.
+
+    Returns:
+        The row, keyed by column name.
     """
     return {
         "chunk_id": derive_chunk_id(source.source_id, source.revision, chunk_index),
@@ -91,11 +102,22 @@ def chunk_rows(
     embeddings: list[list[float]],
     embedding_model: str,
 ) -> list[dict[str, Any]]:
-    """Every row of a batch, with ``chunk_index`` taken from list position.
+    """Build every row of a batch, with ``chunk_index`` taken from list position.
 
     The caller never supplies ``chunk_index``; it is where the chunk sits in
-    ``batch.chunks``. That is also why the vectors are matched positionally, and
-    why the length check below is worth its two lines.
+    ``batch.chunks``. That is also why the vectors are matched by position, and
+    why their count is checked.
+
+    Args:
+        batch: The source and its chunks.
+        embeddings: One vector per chunk, in the same order.
+        embedding_model: The name of the model that made the vectors.
+
+    Returns:
+        One row per chunk, in order.
+
+    Raises:
+        ValueError: If there are not exactly as many vectors as chunks.
     """
     if len(embeddings) != len(batch.chunks):
         raise ValueError(
@@ -112,10 +134,16 @@ def chunk_rows(
 
 
 def source_row(source: SourceMetadata) -> dict[str, Any]:
-    """The `sources` row a batch declares. ``active_revision`` is moved separately.
+    """Build the `sources` row a batch declares. ``active_revision`` is moved separately.
 
     Registering a source and publishing a revision are two different moments --
     the second one is the end of ``replace_source``, once the chunks are in.
+
+    Args:
+        source: The source's metadata.
+
+    Returns:
+        The row, keyed by column name, without ``active_revision``.
     """
     return {
         "source_id": source.source_id,

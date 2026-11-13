@@ -1,298 +1,224 @@
-# juena-rag
+# JüNA RAG
 
-Chunk schema, storage and retrieval for the JCNS knowledge base.
+JüNA RAG makes a project's knowledge searchable. It stores passages from documents
+and code, finds material relevant to a question, and returns references to the
+sources. An assistant can use these results to answer questions about your
+project's own material.
 
-The package owns one thing: **a chunk, once it has been cleaned, gets stored,
-versioned, searched and cited correctly.** It does *not* convert formats, and it does not
-decide where a chunk ends — that stays with whoever knows the document.
+RAG means **retrieval-augmented generation**: finding relevant information before
+asking a language model to write an answer. This package handles the search and
+source information. The application decides how to present or use the results.
 
-**One deliberate exception:** `juena_rag.parsers` reads a source file's *structure* — which
-function, subroutine or section a given line sits inside. That answer is identical for every
-pipeline that will ever read Fortran, and getting it wrong is visible in every citation the
-corpus produces, so it belongs here rather than in each caller.
+## How the JüNA projects fit together
 
-**A second one:** git repositories. `juena-rag ingest-repo`, behind the `[ingest]` extra,
-clones a repository, splits it and stores it as one source, because two applications index
-code and both would otherwise copy the same script. Where a chunk ends is still the
-caller's decision: its own `repositories.yaml` sets `chunk_size` and `chunk_overlap`, and
-juena-rag has no default to fall back on.
-
-> The schema, the store, the read-only HTTP service and its client are built and
-> carry a real corpus. What the contract below still describes ahead of the code is
-> the deployment; see [Status](#status).
-
-## The boundary
-
-| Stage | Who owns it |
-| --- | --- |
-| Fetch the file (git, share, wiki, upload) | the caller's connector |
-| Parse it — PDF, DOCX, LaTeX, HTML → text | [docling](https://docling-project.github.io/docling/), a Markdown parser, or a hand-written pipeline |
-| Split into chunks and clean them — including tables into rows | the caller |
-| **Read the structure — which function or section a line is in** | **juena-rag** |
-| **Validate against the schema** | **juena-rag** |
-| **Embed, store, version, replace** | **juena-rag** |
-| **Search, filter, cite** | **juena-rag** |
-
-Everything above the line is plural and messy by nature — a neutron-scattering manual
-chunks differently from a Fortran file. Everything below it must be *exactly one*
-implementation, or the corpus becomes a pile of incompatible islands.
-
-So a new document type is a new script in someone's own repository plus a schema
-subclass. It is not a change to this package — with the honest caveat that indexing a
-Fortran codebase *did* change it once, to add that language's parser, and the next
-unfamiliar language will too.
-
-## Design in brief
-
-**The schema has three layers.** A core that every chunk carries and that becomes real
-database columns; a per-category extension added by subclassing and kept in one JSON
-column; and a batch object that crosses the API. One rule keeps it from rotting: *if you
-want to filter on it, it belongs in the core.*
-
-The core is short on purpose, and shorter still to write: you supply a source id, a
-category, a revision and a list of texts. Identifiers and hashes are derived, the
-source's answers are copied onto its chunks for you, and anything true of only some
-categories — line numbers, page provenance, a section heading — lives in the extension,
-so nobody indexing PDFs is ever asked for a line number.
-
-**Clean Markdown is a first-class input, not a fallback.** Docling is the default answer
-for PDFs and Office formats, but if your documentation is already Markdown you need
-neither Docling nor a converter: the `.md` file is its own artifact, identified by the
-sha256 of its bytes, and chunks anchor by line range where a PDF would anchor by page and
-bounding box. Heading levels give the same section context Docling extracts. The only
-thing you give up is page-region highlighting.
-
-**Tables are worth splitting by row.** A sixty-row parameter table stored as one chunk is
-one embedding standing for sixty separate facts, and a question about one of them has to
-outrank the whole corpus while the other fifty-nine dilute it. Split it, render each row
-with its column names — `"Parameter: min. y | Unit: cm | Option: -y"` — and mark the chunk
-`chunk_kind="table_row"`. The splitting is yours to do; what the package supplies is the
-agreed shape for the result, so every pipeline describes a row the same way.
-
-**One table, not one collection per category.** `category` is an indexed column, so
-reclassifying a source is an `UPDATE` rather than a re-index. A physical split is
-reserved for the one case that forces it — a different embedding model.
-
-**pgvector is the store.** It reuses a database already required on both deployment
-targets, its filtering is plain SQL, and it turns "rebuild without downtime" into a
-single transaction: insert the new revision beside the old, move the source's pointer,
-delete what the pointer no longer names.
-
-## Where it runs
-
-Two things ship from this repository, and it matters which one a caller uses.
-
-| | What it is | Who uses it |
+| Project | What it provides | Start here when you want to… |
 | --- | --- | --- |
-| **The package** | `pip install juena-rag` — the schema, and optionally the store | ingestion pipelines, and anything validating chunks |
-| **The service** | a container running `juena-rag serve` beside a pgvector instance | applications that search the corpus |
+| **juena-rag** | Searchable knowledge with source references | Add document or code search to a project |
+| [juena-core](https://github.com/neutron-simlab/juena-core) | Shared building blocks for conversations, agents, and files | Build your own assistant application |
+| [juena-chatbot](https://github.com/neutron-simlab/juena-chatbot) | A complete research assistant using core and RAG | Run JüNA or adapt an existing chat application |
 
-Both deployment targets — a single-node cluster on a VM, and the institute's OpenShift —
-run Kubernetes, so the service is one Deployment, one Service and one internal Route —
-reached over the institute VPN, never the public internet — described
-once and sized differently per environment. pgvector is a StatefulSet with its own
-storage claim, deliberately its own instance rather than a schema inside an application's
-database.
+You can use juena-rag with any Python application; it does not require
+juena-core or juena-chatbot. If you are running the chatbot, its
+[setup guide](https://github.com/neutron-simlab/juena-chatbot/blob/main/deploy/LOCAL-DEVELOPMENT.md)
+already includes the search service and database.
 
-**Applications search over HTTP; they do not open the database.** Talking to pgvector
-directly from an application would work — it is a real database server and concurrent
-access is safe. The objection is architectural. Direct access puts schema migrations in
-lockstep across every consumer, hands each of them the embedding API key, and replaces the
-API contract with a table layout that nobody can change afterwards. The
-`[store]` extra exists for this service and for ingestion pipelines, not for consumers.
+## What it provides
 
-### Running the service
+- Search by meaning, with filters for particular sources or document categories.
+- Results that retain the source, revision, and available location information,
+  such as file paths, line numbers, or pages.
+- A common way to describe code, papers, manuals, reports, datasets,
+  presentations, wiki content, and books, with room for your own categories.
+- A ready-to-use importer for Git repositories, including code and documentation.
+- A search service that multiple applications can share, plus a small Python client.
+- Optional reranking: a second model reorders the search results for a question.
+
+The search database uses PostgreSQL with pgvector. An embedding model turns text
+into numerical representations so related passages can be found. A Blablador
+connection is included; the Python interfaces also allow other embedding providers.
+
+## Choose your starting point
+
+**Your group already has a search service:** use the Python client below. Your
+application needs the service address, without database credentials or an
+embedding key.
+
+**You want to build a knowledge collection:** follow the local setup below,
+then import a repository or prepare your own document pipeline.
+
+**You only need the document data types:** use the base package to describe and
+validate your material without running a database.
+
+### Search an existing service
+
+In your application's uv project, install the client:
 
 ```bash
-set -a; source .env; set +a           # JUENA_RAG_DSN, and a key for [embed]
-uv run juena-rag serve --port 8000    # --host 0.0.0.0 in a container
+uv add "juena-rag[client] @ git+https://github.com/neutron-simlab/juena-rag.git"
 ```
 
-It opens one `Store` at startup and refuses to start unless both widths agree: the
-model has to return vectors of the configured size, and the `embedding` column has
-to be that wide. Five endpoints, each of them one call to a `Store` method:
-
-| | |
-| --- | --- |
-| `POST /v1/search` | the question and its filters, in the body |
-| `GET /v1/sources` | the catalogue |
-| `GET /v1/sources/{id}/structure?revision=…` | one document, and **only** at a revision you name |
-| `GET /v1/status` | what is stored — scans the table, so not a probe |
-| `GET /v1/health` | can this pod reach the database |
-
-```bash
-curl -s localhost:8000/v1/search -H 'content-type: application/json' \
-    -d '{"query": "wie berechne ich den Strukturfaktor einer harten Kugel?", "n": 3}'
-```
-
-**Consumers use the client, not the endpoints.** It ships in this package so
-nobody hand-writes a request body against the schema and gets it subtly wrong:
+Keep `uv.lock` in version control so collaborators use the same resolved version.
+Replace the address below with your service's address:
 
 ```python
-from juena_rag.store.pgvector import Store  # [store] -- reads and writes
-from juena_rag.store.http import HttpStore  # [client] -- the read half only
+from juena_rag.store.http import HttpStore
 
-store = Store(dsn, embedder=BlabladorEmbedder.from_env())
-store = HttpStore("https://juena-rag.jcns.internal")
-
-result = store.search("how do I fit a form factor to SANS data?", n=5)
+with HttpStore("http://127.0.0.1:8000") as knowledge:
+    result = knowledge.search("How do I fit a sphere model to scattering data?", n=3)
+    for hit in result.hits:
+        source = result.source_of(hit)
+        print(source.title or source.source_id)
+        print(hit.text)
 ```
 
-**Reranking, when a search asks for it.** `search(..., rerank=True)` takes the 20
-closest chunks by vector distance, has a reranking model read each one together with the
-question, and returns its best `n`. Each hit keeps its `distance` and gains a
-`rerank_score` (larger is better, on the model's own scale), and the result names the
-model in `reranked_by`. The service reranks with Blablador's Qwen3-Reranker
-(`BLABLADOR_RERANK_MODEL`, default `alias-qwen3-4b-reranking`) and re-reads
-`JUENA_RAG_RERANK_CANDIDATES` chunks (20). That alias is experimental, so when it cannot
-answer the search still does, in vector order, with `rerank_error` saying why.
+The result contains passages and source information. Writing an answer from those
+passages is the calling application's job.
 
-Same five read methods, same argument names, same objects back — checked by a
-shared test suite that runs every read against both. `HttpStore` has none of the
-five writing methods, and the suite asserts their absence too.
+## Run a local search service
 
-**Reads only, and pointers only.** The five writing methods have no endpoint at
-all — ingestion opens the database directly, as a job — and a hit carries its own
-text plus where that text came from, never the original file. `git show
-<sha>:<path>` resolves the pointer, and the sha the hit already carries is what
-keeps the two in step.
+You need **Python 3.11 or newer**, **uv** for managing Python dependencies,
+**Docker with Compose** for the database, and a **Blablador API key**.
+The following setup creates a new local knowledge database.
 
-Two more settings, both optional: `JUENA_RAG_POOL_MAX_SIZE` (4) is how many
-database connections there are, and `JUENA_RAG_MAX_CONCURRENCY` (40) is how many
-requests may be in flight. They are deliberately not equal — a search embeds the
-question *before* it borrows a connection, so the round trip to Blablador occupies
-a thread and no connection.
-
-## Getting started
-
-Requires [uv](https://docs.astral.sh/uv/).
+### 1. Install and configure
 
 ```bash
-git clone <this repo> && cd juena-rag
-uv sync                     # creates .venv, installs deps and the dev group
-cp .env.example .env        # then set POSTGRES_PASSWORD, and a key if you want [embed]
-docker compose up -d        # PostgreSQL 18 with pgvector, on port 5433
-uv run pytest               # 273 tests, 1 skip
+git clone https://github.com/neutron-simlab/juena-rag.git
+cd juena-rag
+uv sync --extra serve --extra ingest
+cp .env.example .env
 ```
 
-Two things are optional, and each shows up as skips rather than failures:
+Edit `.env`: set `BLABLADOR_API_KEY` and choose `POSTGRES_PASSWORD`. The supplied
+settings use separate databases for your knowledge collection and the tests.
+Then load the settings into your terminal:
 
-| | Passes | Skips |
-| --- | ---: | ---: |
-| `uv run pytest` | 273 | 1 |
-| `uv run pytest`, container stopped | 190 | 84 |
-| `uv run --extra ingest pytest` | **289** | 0 |
-| `uv run --extra ingest pytest`, container stopped | 206 | 83 |
+```bash
+set -a
+source .env
+set +a
+```
 
-An unreachable `JUENA_RAG_TEST_DSN` is treated the same as an unset one, so the database
-tests skip on a plane. Each of them works in its own throwaway schema and drops it
-afterwards. The single skip in the first row is the chunking suite, which needs the
-`[ingest]` extra that carries a code chunker.
+Repeat that loading step in each new terminal. The service and importer read
+environment variables; they do not load `.env` themselves.
 
-The container is a development database and nothing else; it is not the shape anything
-deploys in. See [`deploy/kube/`](deploy/kube/) for that.
+### 2. Prepare the database once
 
-Add a dependency with `uv add <package>`; add a dev-only one with `uv add --dev`. Both
-update `pyproject.toml` and `uv.lock` together — commit the lockfile.
+Using the default database user from `.env.example`:
 
-Extras, so a pipeline author installs only what they need:
+```bash
+docker compose up -d --wait
+docker compose exec pgvector createdb -U postgres juena_rag_corpus
+```
 
-| Install | Gets you |
+Create the tables in that new database:
+
+```bash
+uv run --extra serve --extra ingest python - <<'PY'
+import os
+import psycopg
+from juena_rag.store import apply_ddl
+
+with psycopg.connect(os.environ["JUENA_RAG_DSN"]) as connection:
+    apply_ddl(
+        connection,
+        dimension=int(os.environ["BLABLADOR_EMBEDDING_DIMENSION"]),
+        create_extension=True,
+    )
+PY
+```
+
+This is a first-time setup, not an upgrade command. Existing tables are refused.
+The database's embedding dimension must match the model used to index and search.
+
+### 3. Add some knowledge
+
+The example configuration indexes jscatter, a scientific Python repository:
+
+```bash
+uv run --extra serve --extra ingest juena-rag ingest-repo jscatter \
+    --config use-cases/code-repository/repositories.yaml
+```
+
+This downloads the repository, splits its files into searchable passages, and
+sends those passages to the embedding service. Add `--dry-run` to preview the
+splitting without embedding or writing to the database; it can still download
+the repository. See the [repository import guide](use-cases/code-repository/README.md)
+for configuration and further options.
+
+### 4. Start searching
+
+```bash
+uv run --extra serve --extra ingest juena-rag serve --port 8000
+```
+
+Keep this terminal open and use the client example above from your application.
+The service checks its database and embedding configuration at startup. Its
+health endpoint is `http://127.0.0.1:8000/v1/health`.
+
+Stop the service with Ctrl+C. `docker compose down` stops the database while
+keeping the stored collection.
+
+## Bring your project's material
+
+For **code repositories**, keep a repository configuration in your own project
+and pass it to `ingest-repo`. The [example configuration](use-cases/code-repository/repositories.yaml)
+shows how to choose files and passage sizes. Updating a repository replaces its
+stored revision, so searches see a complete version of the source.
+
+For **documents**, your project handles reading the original files and splitting
+them into useful passages. There is no general PDF or Office-document importer
+in this package. A document pipeline prepares:
+
+| Part | What it describes |
 | --- | --- |
-| `pip install juena-rag` | the schema alone — enough to write an ingestion pipeline |
-| `pip install juena-rag[store]` | pgvector access (psycopg, pgvector) |
-| `pip install juena-rag[embed]` | the Blablador embedding client (openai, tokenizers) |
-| `pip install juena-rag[client]` | `HttpStore` — search the service over HTTP (httpx) |
-| `pip install juena-rag[serve]` | the HTTP service — FastAPI and uvicorn, **and the two extras above**, since it is the thing that reaches the database and embeds the question |
-| `pip install juena-rag[ingest]` | `juena-rag ingest-repo` — a code chunker, a text splitter and a YAML reader, plus `[store]` and `[embed]` |
+| [SourceMetadata](src/juena_rag/schema/models.py) | The document's identity, revision, title, authors, and original file when available |
+| [A chunk](src/juena_rag/schema/registry.py) | One searchable passage and its source location or category-specific details |
+| [ChunkBatch](src/juena_rag/schema/boundary.py) | The document and passages to store together |
 
-`[embed]` is separate from `[store]` on purpose: a store handed an embedder needs no
-network stack of its own. The `Embedder` protocol and its checks are in the base
-install; only the two things that reach outside — the HTTP client and the model's
-vocabulary — sit behind the extra.
+Use the existing categories or register your own, such as an instrument
+procedure. Keep that project's converter and category extensions alongside its
+application. The shared package handles validation, storage, and retrieval.
 
-`BlabladorEmbedder.from_env()` reads these; only the first has no default:
+## Use only the parts you need
 
-| Variable | Default |
+These extras select which components are installed. For example, replace
+`[client]` in the installation command with `[ingest]` for a repository importer.
+
+| Package | Purpose |
 | --- | --- |
-| `BLABLADOR_API_KEY` | — |
-| `BLABLADOR_BASE_URL` | `https://api.blablador.fz-juelich.de/v1` |
-| `BLABLADOR_EMBEDDING_MODEL` | `alias-qwen3-8b-embeddings` |
-| `BLABLADOR_EMBEDDING_DIMENSION` | `4096` |
-| `BLABLADOR_EMBEDDING_MAX_INPUT_TOKENS` | `8192` |
+| `juena-rag` | Document and chunk data types, validation, and source-code structure parsers |
+| `juena-rag[client]` | Search an existing service from Python |
+| `juena-rag[store]` | Read and write a PostgreSQL/pgvector collection |
+| `juena-rag[embed]` | Use the included embedding and reranking clients |
+| `juena-rag[serve]` | Run the search service, including its database and model clients |
+| `juena-rag[ingest]` | Import Git repositories, including embedding and storage |
 
-**Text arrives ready to embed.** The embedder sends what it is given, whole — there is no
-chunker in this package and there is not going to be one, because where a chunk should end
-depends on the format it came from and the format is exactly what this package does not
-know. Past `max_input_tokens` the model truncates and returns a normal-looking vector, so
-staying under it matters; it is the chunker's job, and `ModelTokenCounter` is here so the
-job is measurable rather than guessed at:
+Applications normally use `HttpStore` to search. Importers use the database
+store to add or update material. The HTTP service exposes only reads and does
+not provide user sign-in or per-source permissions; run it on a trusted network
+or behind access controls provided by your deployment.
 
-```python
-embedder = BlabladorEmbedder.from_env()
-tokens = ModelTokenCounter()  # or ModelTokenCounter("path/to/tokenizer.json")
+The [local Compose file](docker-compose.yml) runs the database only. Projects
+choose how to host the service; the chatbot provides a bundled deployment, and
+[Kubernetes database manifests](deploy/kube/) are also available here.
 
-counts = tokens.count_many([chunk.text for chunk in chunks])
-too_big = [c for c, n in zip(chunks, counts) if n > embedder.metadata.max_input_tokens]
+## Contributing
+
+Keep project-specific source lists and document conversion in the project that
+uses this package. Changes here should help other consumers too. When extending
+the shared data model, consider existing importers and stored collections.
+
+Run the tests from this repository:
+
+```bash
+uv run --extra serve --extra ingest pytest -q
 ```
 
-Pass a local `tokenizer.json` in a container image; left unset the vocabulary is fetched
-from Hugging Face on first use and cached.
+Database tests use `JUENA_RAG_TEST_DSN`; keep it separate from the collection in
+`JUENA_RAG_DSN`. Tests that require a database skip when it is unavailable. The
+live embedding test needs `BLABLADOR_API_KEY`; leave it empty for offline work.
 
-## Layout
+## License
 
-```
-src/juena_rag/
-├── schema/        the chunk schema -- the part other people code against
-├── parsers/       what a source file declares, per language -- one module each,
-│                  all returning the same shape
-├── embedding/     turning text into vectors; the parts that need a network
-│                  (the client, the vocabulary) are behind [embed]
-├── reranking/     the second stage of a search; the Blablador client is [embed]
-├── store/         base.py is the read contract and the errors, and needs no driver;
-│                  pgvector.py is [store], http.py is [client], ddl.sql is the table
-├── ingest/        `juena-rag ingest-repo` -- clone, split, embed, store, [ingest]
-└── service/       the HTTP service -- five endpoints, `juena-rag serve`, and the
-                   command line both subcommands share
-deploy/kube/       the deployed database: a CloudNativePG cluster,
-                   one base and a `vm` overlay for the single node
-docker-compose.yml the local one, for tests
-use-cases/         an example repositories.yaml, and search.py for asking the
-                   corpus a question from a clone; JüNA's own list of repositories
-                   is juena-chatbot's config/repositories.yaml
-tests/
-```
-
-## Working on this
-
-**The import direction is the rule that matters.** `juena_rag` must never import
-`juena` (the chatbot). The chatbot may depend on this package; never the reverse. Getting
-that backwards is the one mistake that is expensive to undo.
-
-Two things to know before touching the schema:
-
-- **It is the expensive thing** — because other people's pipelines are written against
-  it, not because of the database. Adding a category is free forever. Adding a required
-  core field breaks every caller that does not set it. The storage cost is mild by
-  comparison: promoting a field to a column is a backfill, while a genuine re-index
-  (re-embedding everything) is forced only by a change to chunk text, chunk boundaries
-  or the embedding model.
-- **Filtered vector search silently loses recall.** An HNSW index finds the nearest
-  vectors first and applies the filter afterwards, so asking for 10 results with a
-  category filter can quietly return 2. `SET hnsw.iterative_scan = strict_order` fixes
-  it, and it has to be on from the first filtered query.
-
-## Status
-
-| | |
-| --- | --- |
-| Schema | built — models, registry, validation rules, 76 tests |
-| Parsers | built — Python via `ast`; Fortran, C, C++ and LaTeX via tree-sitter |
-| Embedder | built — Blablador client, token counting, dimension pinned at 4096 |
-| pgvector store | built — `Store` with a two-stage search and an atomic source replace |
-| Local database | built — `docker compose up -d` |
-| Deployed database | built — CloudNativePG, verified on a real cluster; the OpenShift arbitrary-UID question is still open |
-| HTTP service | built — five read endpoints under `/v1`, `juena-rag serve`, no write side |
-| The client | built — `HttpStore`, the same five methods over HTTP; a shared suite runs every read against both |
-| Ingestion pipelines | one built — `juena-rag ingest-repo` for git repositories, `[ingest]`; eight repositories and 38,477 chunks are the corpus it holds ([`use-cases/code-repository/`](use-cases/code-repository/)) |
-| Reranker | built — Qwen3-Reranker on Blablador, asked for per search, falling back to vector order. **Not yet measured**, and both Blablador reranking aliases answered 503 when it was built (2026-10-20), so it has not served a live search yet |
+[MIT](LICENSE)

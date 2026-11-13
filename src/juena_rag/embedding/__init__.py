@@ -1,10 +1,10 @@
 """Turning text into vectors.
 
-**This package embeds; the caller does not** -- two vectors are comparable only if
-the same model made both, nothing catches a mismatch at write time, and the only
-cure afterwards is to embed the whole corpus again. **The caller chunks; this
-package does not** -- text arrives ready to embed and is sent whole, because where
-a chunk should end depends on a format this package deliberately does not know::
+This package embeds, not the caller: two vectors are comparable only if the same
+model made both, nothing catches a mismatch at write time, and the only cure is
+to embed the whole corpus again. The caller chunks, not this package: text
+arrives ready to embed and is sent whole, because where a chunk should end
+depends on the document format::
 
     from juena_rag.embedding import Embedder, EmbeddingMetadata  # always works
     from juena_rag.embedding.blablador import BlabladorEmbedder  # needs [embed]

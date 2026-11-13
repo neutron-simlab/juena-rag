@@ -38,7 +38,8 @@ def _declared_name(node) -> str | None:
     while declarator is not None:
         if declarator.type in ("identifier", "field_identifier", "type_identifier"):
             return declarator.text.decode("utf-8", errors="replace")
-        # `qualified_identifier` is C++'s `Class::method`; its last part is the name.
+        # `qualified_identifier` is C++'s `Class::method`; keep it whole, so an
+        # out-of-line method is named `FormFactor::sphere`, not just `sphere`.
         if declarator.type == "qualified_identifier":
             return declarator.text.decode("utf-8", errors="replace")
         declarator = declarator.child_by_field_name("declarator")
@@ -46,10 +47,17 @@ def _declared_name(node) -> str | None:
 
 
 def outline(source: str, language: str = "c") -> list[Definition]:
-    """Every named definition, in source order, innermost last.
+    """List the named definitions in a C or C++ file.
 
     A file that does not parse yields whatever the grammar recovered rather than
     raising -- tree-sitter always returns a tree, with the broken parts marked.
+
+    Args:
+        source: The file's text.
+        language: ``"c"`` or ``"cpp"``.
+
+    Returns:
+        Every named definition, in source order, innermost last.
     """
     definitions = DEFINITIONS.get(language, DEFINITIONS["c"])
     tree = get_parser(language).parse(source.encode("utf-8", errors="replace"))
@@ -68,12 +76,10 @@ def outline(source: str, language: str = "c") -> list[Definition]:
                         path=path,
                     )
                 )
-                # Neither language nests a function inside another function, so
-                # stopping here is not an optimisation -- it is the rule. Without
-                # it, an unexpanded macro that the grammar mistakes for a
-                # definition harvests the next keyword as a name, and citations
-                # start reading `main.while`. There is no preprocessor here and
-                # there should not be one.
+                # Neither language nests a function inside another, so do not look
+                # inside one. Otherwise an unexpanded macro (no preprocessor runs
+                # here) that the grammar mistakes for a definition takes the next
+                # keyword as its name, and citations read `main.while`.
                 if child.type != "function_definition":
                     walk(child, path)
             else:
@@ -84,10 +90,24 @@ def outline(source: str, language: str = "c") -> list[Definition]:
 
 
 def outline_c(source: str) -> list[Definition]:
-    """C, for the mapping in :mod:`juena_rag.parsers`."""
+    """Outline a C file; the entry in :data:`juena_rag.parsers.OUTLINERS`.
+
+    Args:
+        source: The file's text.
+
+    Returns:
+        Every named definition, in source order, innermost last.
+    """
     return outline(source, "c")
 
 
 def outline_cpp(source: str) -> list[Definition]:
-    """C++, for the mapping in :mod:`juena_rag.parsers`."""
+    """Outline a C++ file; the entry in :data:`juena_rag.parsers.OUTLINERS`.
+
+    Args:
+        source: The file's text.
+
+    Returns:
+        Every named definition, in source order, innermost last.
+    """
     return outline(source, "cpp")

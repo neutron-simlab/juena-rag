@@ -11,13 +11,12 @@ not wrap (``client.post``) and still applies its own API key, timeout and retrie
 That is the same client the embedder uses, so this needs the ``[embed]`` extra and
 nothing more.
 
-**Two limits, observed rather than documented.** Another team calling the same
-endpoint (eve-esa/backend#283, October 2026) found it accepts about ten short
-documents per request, or a single document under 8,000 characters. A chunk can be
-3,000 characters, so each candidate is cut to its first ``max_document_chars`` and
-candidates are sent ``max_documents_per_request`` at a time. A cross-encoder scores
-each (question, candidate) pair on its own, so scores from separate requests are
-directly comparable.
+Two limits, observed rather than documented (eve-esa/backend#283): the endpoint
+accepts about ten short documents per request, or a single document under 8,000
+characters. A chunk can be 3,000 characters, so each candidate is cut to its first
+``max_document_chars`` and candidates are sent ``max_documents_per_request`` at a
+time. The model scores each (question, candidate) pair on its own, so scores from
+separate requests can be compared directly.
 """
 
 import os
@@ -41,8 +40,8 @@ from juena_rag.embedding.blablador import DEFAULT_BASE_URL
 #: waiting, so the faster model is the default. ``BLABLADOR_RERANK_MODEL`` switches.
 DEFAULT_MODEL = "alias-qwen3-4b-reranking"
 
-#: See the module docstring: about ten documents per request is what the endpoint
-#: was seen to accept, and 800 characters keeps ten of them near 8,000 in total.
+#: About ten documents per request is what the endpoint was seen to accept, and
+#: 800 characters keeps ten of them near 8,000 in total.
 DEFAULT_MAX_DOCUMENTS_PER_REQUEST = 10
 DEFAULT_MAX_DOCUMENT_CHARS = 800
 
@@ -67,16 +66,24 @@ class BlabladorReranker:
         max_retries: int = 0,
         client: Any | None = None,
     ) -> None:
-        """
-        :param timeout: seconds to wait for one request. Short on purpose: a
-            person is waiting on the search, and a slow reranker costs less as a
-            fallback to the vector order than as a hung tool call.
-        :param max_retries: how many times the SDK retries a failed request.
-            **Zero by default**, unlike the embedder's three. When the model is
-            "temporarily unavailable", a retry only adds waiting before the same
-            fallback.
-        :param client: an already-built client, for tests. Anything with
-            ``.post(path, body=…, cast_to=object)`` will do.
+        """Initialize the reranker.
+
+        Args:
+            api_key: The Blablador API key.
+            base_url: The API's address.
+            model: The reranking alias; also reported as :attr:`name`.
+            max_documents_per_request: How many candidates go in one request.
+            max_document_chars: Each candidate is cut to this many characters.
+            timeout: Seconds to wait for one request. Short on purpose: a person
+                is waiting on the search, and a slow reranker costs less as a
+                fallback to the vector order than as a hung tool call.
+            max_retries: How many times the SDK retries a failed request. Zero
+                by default, unlike the embedder's three: when the model is
+                "temporarily unavailable", a retry only adds waiting before the
+                same fallback.
+            client: An already-built client, for tests. Anything with
+                ``.post(path, body=…, cast_to=object)`` will do. None means
+                build an ``OpenAI`` client from the settings above.
         """
         self.name = model
         self.max_documents_per_request = max_documents_per_request
@@ -93,8 +100,16 @@ class BlabladorReranker:
         """Build from the environment the embedder already reads, plus the model.
 
         ``BLABLADOR_API_KEY`` and ``BLABLADOR_BASE_URL`` are shared with the
-        embedder; ``BLABLADOR_RERANK_MODEL`` picks the reranking alias. Anything
-        passed as a keyword wins.
+        embedder; ``BLABLADOR_RERANK_MODEL`` picks the reranking alias.
+
+        Args:
+            **overrides: Settings that win over the environment.
+
+        Returns:
+            The reranker.
+
+        Raises:
+            ValueError: If ``BLABLADOR_API_KEY`` is not set.
         """
         api_key = os.getenv("BLABLADOR_API_KEY", "").strip()
         if not api_key and "api_key" not in overrides:
@@ -119,6 +134,17 @@ class BlabladorReranker:
 
         Stops at the first request that fails, rather than ranking half the
         candidates: a partial order would look complete and be wrong.
+
+        Args:
+            query: The question.
+            candidates: The candidate texts.
+            n: How many to return.
+
+        Returns:
+            ``(index into candidates, score)`` for the best ``n``, best first.
+
+        Raises:
+            RerankFailed: If a request fails or its answer is malformed.
         """
         scored: list[tuple[int, float]] = []
         for start in range(0, len(candidates), self.max_documents_per_request):

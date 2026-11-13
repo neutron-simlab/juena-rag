@@ -35,7 +35,16 @@ def collect(config: RepoConfig, root: Path, limit: int | None) -> list:
     """Chunk every indexable file, numbered continuously across the repository.
 
     Continuity matters: ``chunk_index`` is a chunk's position in the batch, so
-    restarting the count per file would give several chunks the same index.
+    restarting the count per file would give several chunks the same index. A
+    file that cannot be read is skipped with a message.
+
+    Args:
+        config: The repository's settings.
+        root: The clone's root directory.
+        limit: Only the first this-many files. None means all of them.
+
+    Returns:
+        The chunks of every file, in sorted path order.
     """
     paths = list_files(config, root)
     if limit is not None:
@@ -66,9 +75,12 @@ def collect(config: RepoConfig, root: Path, limit: int | None) -> list:
 def report_tokens(chunks: list, ceiling: int) -> None:
     """Measure the chunks against the model's input limit, and say so.
 
-    Worth the two seconds the vocabulary takes to load: past the ceiling the model
-    truncates and returns a normal-looking vector, so nothing else would ever
-    mention it.
+    Past the ceiling the model truncates and returns a normal-looking vector, so
+    nothing else would report it.
+
+    Args:
+        chunks: The chunks to measure.
+        ceiling: The model's input limit, in tokens.
     """
     from juena_rag.embedding.tokenizer import ModelTokenCounter
 
@@ -96,11 +108,29 @@ def ingest_repository(
     force: bool = False,
     limit: int | None = None,
 ) -> int:
-    """Run one ingest. Returns the process's exit code, like a command would.
+    """Run one ingest.
 
     Settings come from two places, each owned by the caller: how to split the
     files from ``config_path``, and where to store them and which model embeds
     them from the environment (``JUENA_RAG_DSN``, ``BLABLADOR_*``).
+
+    Args:
+        repository_id: The repository's id in the config file.
+        config_path: The ``repositories.yaml`` to read.
+        cache_dir: The directory that holds every clone.
+        dry_run: Chunk and count tokens only, without embedding or storing.
+        no_sync: Use the existing clone as it stands, without fetching.
+        force: Re-ingest even when the stored revision already matches.
+        limit: Only the first this-many files. None means all of them.
+
+    Returns:
+        The process's exit code: 0 when done or already up to date, 1 when
+        there is nothing to ingest or no database is set, 2 for an unknown
+        repository or a missing clone.
+
+    Raises:
+        ValueError: If the config is invalid, ``BLABLADOR_API_KEY`` is not set,
+            or a numeric ``BLABLADOR_*`` setting is not a whole number.
     """
     configs = load_repositories(config_path)
     config = configs.get(repository_id)
@@ -138,10 +168,9 @@ def ingest_repository(
         print("dry run -- nothing was embedded or stored")
         return 0
 
-    # `JUENA_RAG_TEST_DSN` is the fallback rather than the name, because the test
-    # suite works in throwaway schemas it drops afterwards and this writes a real
-    # corpus that stays. Pointing both at one database is fine and is what a
-    # laptop does; they should still be separately settable.
+    # `JUENA_RAG_TEST_DSN` is only a fallback: the tests work in throwaway schemas
+    # they drop, while this writes a corpus that stays. Both may point at one
+    # database, as on a laptop, but they stay separately settable.
     dsn = os.environ.get("JUENA_RAG_DSN") or os.environ.get("JUENA_RAG_TEST_DSN")
     if not dsn:
         print(

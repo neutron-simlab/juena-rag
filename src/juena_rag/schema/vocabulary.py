@@ -26,8 +26,8 @@ ChunkKind = Literal["text", "table", "equation", "code_block"]
 #: have no column, so deriving it would drop them silently.
 #:
 #: ``category`` is here even though the base ``Chunk`` has no such field. Every
-#: registered subclass pins one, and it does have a column -- leaving it out stored
-#: the same string twice on every row.
+#: registered subclass pins one, and it does have a column -- leaving it out would
+#: store the same string twice on every row.
 CHUNK_COLUMNS = frozenset({"text", "source_uri", "language", "chunk_kind", "category"})
 
 
@@ -36,7 +36,15 @@ def derive_chunk_id(source_id: str, source_revision: str, chunk_index: int) -> s
 
     Deterministic, so re-ingesting the same input updates rows rather than
     duplicating them. The revision is part of it, which is what lets a new
-    revision be written *beside* the old one.
+    revision be written beside the old one.
+
+    Args:
+        source_id: The source's id.
+        source_revision: The revision the chunk belongs to.
+        chunk_index: The chunk's position within the source.
+
+    Returns:
+        A SHA-256 hex digest of the three values.
     """
     # NUL-separated so ("ab", "c", 1) cannot collide with ("a", "bc", 1).
     joined = "\x00".join((source_id, source_revision, str(chunk_index)))
@@ -44,17 +52,33 @@ def derive_chunk_id(source_id: str, source_revision: str, chunk_index: int) -> s
 
 
 def compute_content_hash(text: str) -> str:
-    """A hash of a chunk's text, for detecting that content changed."""
+    """Hash a chunk's text, for detecting that content changed.
+
+    Args:
+        text: The chunk's text.
+
+    Returns:
+        A SHA-256 hex digest of the text.
+    """
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def check_range(
     start: int | None, end: int | None, start_name: str, end_name: str
 ) -> None:
-    """Validation rule 3. Raise unless a start/end pair describes a range.
+    """Raise unless a start/end pair describes a range.
 
     A start alone is fine; an end alone is not, and neither is an end before its
     start. Used for lines on any chunk and character offsets on a code chunk.
+
+    Args:
+        start: The start value, or None.
+        end: The end value, or None.
+        start_name: The start field's name, for the error message.
+        end_name: The end field's name, for the error message.
+
+    Raises:
+        ValueError: If ``end`` is set without ``start``, or is before it.
     """
     if end is not None and start is None:
         raise ValueError(f"`{end_name}` is set but `{start_name}` is not")

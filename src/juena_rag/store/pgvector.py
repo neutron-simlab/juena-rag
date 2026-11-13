@@ -3,8 +3,7 @@
 Needs the ``[store]`` extra, which is why nothing in ``store/__init__.py`` imports
 it: creating the table works on the base install, talking to it does not. The
 table itself is created once by :func:`juena_rag.store.schema.apply_ddl`, never
-here -- a service that creates its own tables at startup is a service that
-quietly creates the wrong one.
+here, so a service cannot quietly create a wrong one at startup.
 """
 
 from collections.abc import Sequence
@@ -55,12 +54,28 @@ class Store:
         check_dimension: bool = True,
         analyze_after_write: bool = True,
     ) -> None:
-        """
-        :param reranker: what re-orders candidates when a search passes
-            ``rerank=True``. Optional: without one, such a search is refused
-            rather than quietly answered in the other order.
-        :param rerank_candidates: how many of the closest chunks the reranker
-            re-reads.
+        """Initialize the store and open its connection pool.
+
+        Args:
+            dsn: The database connection string.
+            embedder: Embeds chunks on the way in and every question.
+            reranker: What re-orders candidates when a search passes
+                ``rerank=True``. Optional: without one, such a search is refused
+                rather than quietly answered in the other order.
+            k: How many candidates the index retrieves when a search does not say.
+            n: How many hits a search returns when it does not say.
+            rerank_candidates: How many of the closest chunks the reranker
+                re-reads.
+            min_size: The fewest connections the pool keeps open.
+            max_size: The most connections the pool opens.
+            check_dimension: Compare the column's width to the embedder's now.
+            analyze_after_write: Refresh the planner's statistics after every
+                bulk write; see :meth:`_analyze`.
+
+        Raises:
+            StoreError: If the database has no ``chunks`` table.
+            DimensionMismatch: If the column's width differs from the
+                embedder's.
         """
         self._embedder = embedder
         self._dimension = embedder.metadata.dimension
@@ -137,19 +152,28 @@ class Store:
     def register_source(self, metadata: SourceMetadata) -> None:
         """Declare a source before it has any content.
 
-        Never a precondition for :meth:`replace_source`, which registers the source
-        itself -- two calls where one would do is a call somebody eventually forgets.
+        Not needed before :meth:`replace_source`, which registers the source
+        itself.
+
+        Args:
+            metadata: The source to declare.
         """
         with self._pool.connection() as connection:
             _upsert_source(connection, metadata)
 
     def replace_source(self, batch: ChunkBatch) -> str:
-        """Replace a source's entire content, atomically. Returns the new revision.
+        """Replace a source's entire content, atomically.
 
         Readers see the old revision or the new one and never a half-built index.
         Embedding happens first, holding no connection; the delete, the insert and
         the move of ``active_revision`` then run in one short transaction, so a
         failure anywhere leaves the previous revision serving.
+
+        Args:
+            batch: The source and all of its chunks.
+
+        Returns:
+            The new revision.
         """
         vectors = self._embedder.embed_documents([chunk.text for chunk in batch.chunks])
         rows = chunk_rows(batch, vectors, self._embedder.metadata.model)
@@ -161,15 +185,14 @@ class Store:
             # just the other revisions, and not after the insert.
             #
             # `chunk_id` hashes (source_id, revision, chunk_index), so re-running
-            # this at an *unchanged* revision produces exactly the ids already
-            # stored. Deleting `source_revision <> revision` afterwards spared
-            # them, and the insert collided on the primary key: "replace" failed
-            # on the one input it should have been most able to handle. Deleting
-            # first, unconditionally, also drops rows past the end when a source
-            # gets shorter -- which conflict-update alone would have left behind.
+            # this at an unchanged revision produces the ids already stored: a
+            # delete of only `source_revision <> revision` would spare them and
+            # the insert would hit the primary key. Deleting first also drops
+            # rows past the end when a source gets shorter, which a
+            # conflict-update alone would leave behind.
             #
-            # Still atomic. The delete and the insert are one transaction, so a
-            # concurrent reader sees the previous content until it commits.
+            # The delete and the insert are one transaction, so a concurrent
+            # reader sees the previous content until it commits.
             connection.execute(
                 "DELETE FROM chunks WHERE source_id = %s", (batch.source.source_id,)
             )
@@ -183,11 +206,20 @@ class Store:
         return revision
 
     def upsert_chunks(self, batch: ChunkBatch) -> int:
-        """Add or overwrite individual chunks without touching the rest. Returns how many.
+        """Add or overwrite individual chunks without touching the rest.
 
         For incremental ingestion, where one file of many changed. ``chunk_index``
         is still position within the batch, so a caller must number a source's
         chunks continuously rather than restarting at zero per file.
+
+        Args:
+            batch: The source and the chunks to write.
+
+        Returns:
+            How many chunks were written.
+
+        Raises:
+            SourceNotFound: If the source does not exist yet.
         """
         vectors = self._embedder.embed_documents([chunk.text for chunk in batch.chunks])
         rows = chunk_rows(batch, vectors, self._embedder.metadata.model)
@@ -205,14 +237,12 @@ class Store:
         return len(rows)
 
     def _analyze(self) -> None:
-        """Refresh the planner's statistics after a bulk write. Measured, not assumed.
+        """Refresh the query planner's statistics after a bulk write.
 
-        Without it the planner still believes whatever it last sampled -- right
-        after a first ingest, that the table is nearly empty -- and answers a
-        search with a filter-and-sort over every matching row instead of using the
-        HNSW index. Autoanalyze gets there on its own, a minute or so later; these
-        few milliseconds close the window where searches are slow and nothing says
-        why.
+        Without it the planner still believes its last sample (right after a
+        first ingest, a nearly empty table) and answers a search by sorting every
+        matching row instead of using the HNSW index. Autoanalyze catches up a
+        minute or so later; these few milliseconds close that slow window.
         """
         if not self._analyze_after_write:
             return
@@ -220,7 +250,15 @@ class Store:
             connection.execute("ANALYZE chunks")
 
     def delete_chunks(self, source_id: str, *, uri: str) -> int:
-        """Remove one file's chunks from a source. Returns how many went."""
+        """Remove one file's chunks from a source.
+
+        Args:
+            source_id: The source's id.
+            uri: The file's ``source_uri``.
+
+        Returns:
+            How many chunks were removed.
+        """
         with self._pool.connection() as connection:
             cursor = connection.execute(
                 "DELETE FROM chunks WHERE source_id = %s AND source_uri = %s",
@@ -229,7 +267,14 @@ class Store:
             return cursor.rowcount
 
     def delete_source(self, source_id: str) -> bool:
-        """Remove a source and every chunk of it. ``ON DELETE CASCADE`` does the chunks."""
+        """Remove a source and every chunk of it. ``ON DELETE CASCADE`` does the chunks.
+
+        Args:
+            source_id: The source's id.
+
+        Returns:
+            True if the source existed.
+        """
         with self._pool.connection() as connection:
             cursor = connection.execute(
                 "DELETE FROM sources WHERE source_id = %s", (source_id,)
@@ -261,6 +306,23 @@ class Store:
         come back with a ``rerank_score``. If the reranking model cannot answer,
         the search still does, in vector-distance order, with ``rerank_error``
         saying why.
+
+        Args:
+            query: The question.
+            sources: Only these source ids. None means all.
+            categories: Only these categories. None means all.
+            chunk_kinds: Only these chunk kinds. None means all.
+            k: How many candidates the index retrieves. None means the
+                store's ``k``.
+            n: How many hits to return. None means the store's ``n``.
+            rerank: Have the reranker re-order the closest candidates first.
+
+        Returns:
+            The hits and the documents they came from.
+
+        Raises:
+            ValueError: If ``n`` exceeds ``k``, or ``rerank`` is asked for and
+                the store has no reranker.
         """
         k = self.k if k is None else k
         n = self.n if n is None else n
@@ -347,7 +409,11 @@ class Store:
         )
 
     def list_sources(self) -> list[SourceRow]:
-        """The catalogue, newest first."""
+        """List the catalogue.
+
+        Returns:
+            Every source, newest first.
+        """
         with (
             self._pool.connection() as connection,
             connection.cursor(row_factory=dict_row) as cursor,
@@ -367,11 +433,18 @@ class Store:
         *,
         revision: str | None = None,
     ) -> SourceRow | None:
-        """One document, if it is still at the revision asked for.
+        """Look up one document, if it is still at the revision asked for.
 
-        ``None`` covers both ways this fails -- absent, or moved on -- because a
-        caller that cannot act on the difference is better served by one answer
-        than by two it has to branch on.
+        ``None`` covers both ways this fails, absent or moved on, because a
+        caller cannot act on the difference.
+
+        Args:
+            source_id: The source's id.
+            revision: The revision the caller holds. None means whichever
+                revision is active.
+
+        Returns:
+            The source's row, or None if it is absent or has moved on.
         """
         with (
             self._pool.connection() as connection,
@@ -393,9 +466,9 @@ class Store:
     def ping(self) -> None:
         """Reach the database and come straight back. Raises if it cannot.
 
-        What a readiness probe means, and deliberately not :meth:`status`: that
-        one counts and de-duplicates over every chunk, which is 25 ms and a
-        sequential scan on the live corpus against 0.6 ms for this.
+        For a readiness probe, instead of :meth:`status`, which counts and
+        de-duplicates over every chunk: 25 ms and a sequential scan on the live
+        corpus, against 0.6 ms for this.
         """
         with self._pool.connection() as connection:
             connection.execute("SELECT 1")
@@ -405,6 +478,9 @@ class Store:
 
         ``embedding_models`` scans the chunks table, so this is a startup or
         health-check call rather than something to put on a request path.
+
+        Returns:
+            The width, the counts and the embedding models in use.
         """
         with self._pool.connection() as connection:
             row = connection.execute(
@@ -504,9 +580,9 @@ def _insert_chunks(
 ) -> None:
     """Insert prepared rows, wrapping the two values psycopg needs told about.
 
-    ``executemany`` rather than ``COPY`` deliberately: the embedding call ahead of
-    this takes minutes and the insert takes seconds, so the faster path would buy
-    nothing that anybody could measure.
+    ``executemany`` rather than the faster ``COPY``: the embedding call ahead of
+    this takes minutes and the insert seconds, so ``COPY`` would gain nothing
+    measurable.
     """
     if not rows:
         return

@@ -1,7 +1,8 @@
 """What crosses into the store -- `juena_rag.schema.boundary`.
 
-Validation rules 4 to 7, and the `SerializeAsAny` round trip -- the failure that
-is invisible to every type checker and every test that does not read the dump.
+The checks that need a chunk's source as well as the chunk, and the
+`SerializeAsAny` round trip -- the failure that is invisible to every type
+checker and every test that does not read the dump.
 """
 
 import pytest

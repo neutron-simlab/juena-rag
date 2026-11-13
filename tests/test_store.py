@@ -92,8 +92,8 @@ def test_extra_holds_exactly_the_fields_with_no_column():
     assert extra["symbol"] == "build_index"
     assert extra["start_line"] == 231
     assert extra["heading_path"] == ["indexing", "build"]
-    # Read from CHUNK_COLUMNS rather than repeated here: spelling the names out
-    # once let `category` grow a column without this test noticing.
+    # Read from CHUNK_COLUMNS rather than repeated here, so a newly added column
+    # cannot slip past this test.
     for column in CHUNK_COLUMNS:
         assert column not in extra
 
@@ -239,11 +239,11 @@ def test_replacing_a_source_leaves_exactly_the_new_revision(store):
 
 
 def test_replacing_a_source_at_the_same_revision_works(store):
-    """Found by the first real ingest, which is later than it should have been.
+    """Re-running at an unchanged revision replaces the stored chunks.
 
     `chunk_id` hashes the revision, so re-running at an unchanged one rebuilds the
-    ids already stored -- and the old delete spared exactly those rows, leaving the
-    insert to collide on the primary key.
+    ids already stored. A delete that spared those rows would leave the insert to
+    collide on the primary key.
     """
     store.replace_source(a_batch("first go", revision="v1"))
     store.replace_source(a_batch("chunked differently", revision="v1"))
@@ -255,10 +255,10 @@ def test_replacing_a_source_at_the_same_revision_works(store):
 
 
 def test_replacing_a_source_with_fewer_chunks_leaves_none_behind(store):
-    """The other half of the same bug: a source that gets shorter.
+    """A source that gets shorter keeps none of its old rows.
 
-    Overwriting on conflict would have fixed the collision above and still left
-    rows 1 and 2 here, since nothing in the new batch has their ids.
+    Overwriting on conflict would fix the collision above and still leave rows 1
+    and 2 here, since nothing in the new batch has their ids.
     """
     store.replace_source(a_batch("one", "two", "three", revision="v1"))
     store.replace_source(a_batch("only this", revision="v2"))
@@ -267,7 +267,7 @@ def test_replacing_a_source_with_fewer_chunks_leaves_none_behind(store):
 
 
 def test_a_reader_never_sees_a_half_replaced_source(store):
-    """The guarantee the whole pgvector migration was chosen for.
+    """Replacing a source is atomic for anyone searching it.
 
     One thread replaces a source in a loop while this one searches; every single
     result set must be wholly one revision or wholly the other, never a mixture

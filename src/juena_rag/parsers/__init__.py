@@ -8,8 +8,7 @@ reading. Splitting a file into chunks is still the caller's business.
 from juena_rag.parsers import clike, fortran, latex, python
 from juena_rag.parsers.definition import Definition, enclosing
 
-#: Which parser handles which language. A plain dict rather than a registry: the
-#: wiring is three lines long and reads better where you are already looking.
+#: Which parser handles which language.
 OUTLINERS = {
     "python": python.outline,
     "fortran": fortran.outline,
@@ -20,10 +19,17 @@ OUTLINERS = {
 
 
 def outline(language: str, source: str) -> list[Definition]:
-    """Every definition or heading in ``source``, in source order, innermost last.
+    """List the definitions or headings in a file.
 
-    An unparsed language returns an empty list rather than raising, so a caller
-    can offer any file it likes and take what comes back.
+    A language with no parser gives an empty list rather than raising, so a
+    caller can offer any file it likes and take what comes back.
+
+    Args:
+        language: A key of :data:`OUTLINERS`, such as ``"python"``.
+        source: The file's text.
+
+    Returns:
+        Every definition or heading, in source order, innermost last.
     """
     parser = OUTLINERS.get(language)
     return [] if parser is None else parser(source)

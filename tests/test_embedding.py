@@ -269,8 +269,8 @@ def test_check_width_says_which_vector_was_wrong():
 
 
 def test_queries_go_out_unwrapped_by_default():
-    """What the chatbot does today. Changing it only affects queries, so the
-    decision stays reversible after the corpus is embedded.
+    """Off by default. Changing it only affects queries, so the decision stays
+    reversible after the corpus is embedded.
     """
     embedder, stub = build()
 

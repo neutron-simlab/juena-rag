@@ -5,8 +5,8 @@ driver at all -- it renders SQL and takes a connection somebody else opened::
 
     from juena_rag.store import apply_ddl, render_ddl  # always works
 
-The two client modules are the exception and are deliberately **not** imported
-here: each needs an extra, and this module must keep working on the base install.
+The two client modules are not imported here: each needs an extra, and this
+module must keep working on the base install.
 Reach for them by name::
 
     from juena_rag.store.pgvector import Store       # needs [store]

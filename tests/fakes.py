@@ -107,7 +107,7 @@ class FakeReranker:
 
 
 class FailingReranker:
-    """A reranking model that is down -- what Blablador answered on 2026-10-20."""
+    """A reranking model that is down, failing the way Blablador does (HTTP 503)."""
 
     name = "failing-reranker"
 

@@ -1,12 +1,12 @@
 """What a reranker is, and the one way it is allowed to fail.
 
 A search runs in two stages. The first compares the question's vector with every
-chunk's vector, which the database can do quickly because the chunk vectors were
-computed in advance -- but each side was embedded without seeing the other, so the
-order is only roughly right. The second stage, the *reranker*, is a model that
-reads the question and one candidate together and judges how well they match.
-That is more accurate, and too slow for the whole corpus, so it only re-reads the
-few dozen chunks the first stage found.
+chunk's vector, which is fast because the chunk vectors were computed in advance,
+but each side was embedded without seeing the other, so the order is only roughly
+right. The second stage, the reranker, is a model that reads the question and one
+candidate together and judges how well they match. That is more accurate but too
+slow for the whole corpus, so it only re-reads the few dozen chunks the first
+stage found.
 
 This module imports nothing beyond the standard library, so the store can accept
 a reranker on the base install. The real one is
@@ -39,9 +39,18 @@ class Reranker(Protocol):
     name: str
 
     def rerank(self, query: str, candidates: list[str], n: int) -> list[tuple[int, float]]:
-        """Return ``(index into candidates, score)`` for the best ``n``, best first.
+        """Score the candidates against the question and keep the best.
 
-        A larger score means more relevant. Raises :class:`RerankFailed` when the
-        model cannot answer.
+        Args:
+            query: The question.
+            candidates: The candidate texts.
+            n: How many to return.
+
+        Returns:
+            ``(index into candidates, score)`` for the best ``n``, best first. A
+            larger score means more relevant.
+
+        Raises:
+            RerankFailed: If the model cannot answer.
         """
         ...

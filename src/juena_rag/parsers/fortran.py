@@ -9,8 +9,7 @@ from tree_sitter_language_pack import get_parser
 from juena_rag.parsers.definition import Definition
 
 #: The node types that name something worth citing. ``interface`` and
-#: ``submodule`` are here because they nest like the rest, not because datreat
-#: uses them.
+#: ``submodule`` are here because they nest like the rest.
 DEFINITIONS = frozenset(
     {"subroutine", "function", "module", "program", "interface", "submodule"}
 )
@@ -32,11 +31,17 @@ def _declared_name(node) -> str | None:
 
 
 def outline(source: str) -> list[Definition]:
-    """Every named Fortran definition, in source order, innermost last.
+    """List the named definitions in a Fortran file.
 
     Fixed-form source -- the punch-card layout ``.f`` files still use -- parses
     about two thirds of the time, and an unparsed file yields nothing rather than
     raising.
+
+    Args:
+        source: The file's text.
+
+    Returns:
+        Every named definition, in source order, innermost last.
     """
     tree = get_parser("fortran").parse(source.encode("utf-8", errors="replace"))
 

@@ -1,10 +1,8 @@
 """One file in, a list of :class:`CodeChunk` out.
 
-The splitting itself is the chatbot's, carried over deliberately: plan 04 compares
-the two stores on one benchmark, and different chunk boundaries would make that
-comparison measure chunking rather than storage. What is new here is the output
-type and four fields the chatbot never filled -- the line range, the enclosing
-symbol, ``chunk_kind`` and a working ``is_doc``.
+The splitting matches juena-chatbot's on purpose: a benchmark comparing the two
+stores should measure storage, not different chunk boundaries. Each chunk also
+records its line range, enclosing symbol, ``chunk_kind`` and ``is_doc``.
 """
 
 from pathlib import Path
@@ -48,9 +46,8 @@ LANGUAGE_BY_EXTENSION = {
 }
 
 #: Languages chonkie can parse. Everything else goes through the recursive
-#: splitter below. Fortran and LaTeX are here because `chonkie[code]` already
-#: carries their tree-sitter grammars -- adding them cost a set entry, not a
-#: dependency.
+#: splitter below. Fortran and LaTeX work because `chonkie[code]` already
+#: carries their tree-sitter grammars.
 _CHONKIE_LANGUAGES = {"python", "markdown", "fortran", "latex"}
 
 #: Languages langchain ships syntax-aware separators for, used only when chonkie
@@ -66,15 +63,21 @@ _LANGCHAIN_LANGUAGES = {
 
 #: Languages whose chunks are prose, so they stay ``chunk_kind="text"``.
 #:
-#: Deliberately keyed on the language rather than on ``is_doc``: those two ask
-#: different questions. ``is_doc`` is *where the file lives* -- a config decision
-#: about the documentation tree -- and ``chunk_kind`` is *what the text is*. A
-#: README outside the docs tree is still prose.
+#: Keyed on the language, not on ``is_doc``: ``is_doc`` says where the file lives
+#: (the configured docs tree), ``chunk_kind`` says what the text is. A README
+#: outside the docs tree is still prose.
 _PROSE_LANGUAGES = {"markdown", "rst", "text", "latex"}
 
 
 def detect_language(rel_path: str) -> str:
-    """What a path says its contents are written in."""
+    """Tell a file's language from its extension.
+
+    Args:
+        rel_path: The file's path inside the repository.
+
+    Returns:
+        The language name, or ``"other"`` for an unlisted extension.
+    """
     return LANGUAGE_BY_EXTENSION.get(Path(rel_path).suffix, "other")
 
 
@@ -194,7 +197,15 @@ def _headings(definitions: list[Definition], first: int, last: int) -> list[str]
 
 
 def line_of(source: str, offset: int) -> int:
-    """Which 1-based line character ``offset`` falls on."""
+    """Find the line a character offset falls on.
+
+    Args:
+        source: The file's text.
+        offset: A character position in ``source``.
+
+    Returns:
+        The line number, counting from 1.
+    """
     return source.count("\n", 0, offset) + 1
 
 
@@ -213,15 +224,25 @@ def chunk_file(
 ) -> list[CodeChunk]:
     """Split one file into chunks ready to hand to a ``ChunkBatch``.
 
-    ``chunk_size`` is in *characters*, not tokens -- the splitters count characters
-    and the embedding model's ceiling is in tokens, which is what
-    ``ModelTokenCounter`` is for. Both sizes are required: they come from the
-    caller's ``repositories.yaml``, never from a default in here.
+    ``chunk_size`` is in characters, not tokens; the embedding model's limit is in
+    tokens, which ``ModelTokenCounter`` measures. Both sizes are required and come
+    from the caller's ``repositories.yaml``.
+
+    Args:
+        source: The file's text.
+        rel_path: The file's path inside the repository. It decides the language
+            and becomes each chunk's ``source_uri``.
+        chunk_size: The largest chunk, in characters.
+        chunk_overlap: How many characters consecutive chunks may share. Clamped
+            to below ``chunk_size``.
+        is_doc: Whether the file is documentation rather than source.
+
+    Returns:
+        The file's chunks in order, without blank ones.
     """
     language = detect_language(rel_path)
-    # The splitter refuses an overlap at or above the chunk size, which is a
-    # config that reads as reasonable -- 1500/200 is fine, 100/200 is not. Clamped
-    # once here so both paths below behave the same way.
+    # The splitter refuses an overlap at or above the chunk size (1500/200 is
+    # fine, 100/200 is not). Clamped once here so both paths below agree.
     chunk_overlap = min(chunk_overlap, max(chunk_size - 1, 0))
 
     pieces: list[dict[str, Any]] = []
@@ -241,9 +262,8 @@ def chunk_file(
 
     chunks: list[CodeChunk] = []
     for piece in pieces:
-        # A splitter can hand back a run of blank lines, and `Chunk` rejects text
-        # that is empty or only whitespace -- embedding it would cost a model call
-        # and return a vector matching everything weakly and nothing well.
+        # A splitter can hand back a run of blank lines, which `Chunk` rejects:
+        # its vector would match everything weakly and nothing well.
         if not piece["text"].strip():
             continue
 

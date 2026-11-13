@@ -38,8 +38,7 @@ def database():
     import psycopg
 
     # Unreachable is as good a reason to skip as unset: a `.env` copied weeks ago
-    # points at a container that is no longer running, and that is the case the
-    # "works on a plane" promise is actually about.
+    # may point at a container that is not running any more.
     try:
         connection = psycopg.connect(dsn)
     except psycopg.OperationalError as error:

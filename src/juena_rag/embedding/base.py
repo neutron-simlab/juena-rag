@@ -1,18 +1,17 @@
 """What an embedder is, and the checks every embedder owes its caller.
 
-An **embedding** is a list of numbers standing in for a piece of text, arranged so
-that two texts about the same thing land close together. Everything here is a
-description, a contract or a pure function, so this module imports pydantic and
-nothing else -- the real client lives in :mod:`juena_rag.embedding.blablador`,
-behind the ``[embed]`` extra.
+An embedding is a list of numbers standing in for a piece of text, arranged so
+that two texts about the same thing land close together. This module imports
+pydantic and nothing else; the real client is in
+:mod:`juena_rag.embedding.blablador`, behind the ``[embed]`` extra.
 """
 
 from typing import Protocol
 
 from pydantic import BaseModel, Field
 
-#: How many texts go in one request. What the chatbot already runs against this
-#: endpoint, so it is a measured limit rather than a guess.
+#: How many texts go in one request: the batch size already in use against this
+#: endpoint, so a measured limit rather than a guess.
 DEFAULT_MAX_BATCH_TEXTS = 64
 
 
@@ -46,9 +45,7 @@ class EmbeddingMetadata(BaseModel):
     """Which model made a vector, and the shape of what it makes.
 
     All three values are configuration, not discovery: nothing is looked up from
-    the server, so a service changing underneath us is loud rather than quiet. A
-    pydantic model rather than a dataclass because plan 02 serialises it out of
-    ``/status``.
+    the server, so a service changing underneath us is loud rather than quiet.
     """
 
     model_config = {"extra": "forbid", "frozen": True}
@@ -68,21 +65,34 @@ class EmbeddingMetadata(BaseModel):
 class Embedder(Protocol):
     """Anything that can turn text into vectors.
 
-    Two methods rather than one because writing and searching are the same model
-    but not the same call: an ingest embeds thousands and cares only about
-    throughput, a search embeds exactly one and is what a person is waiting for.
-    Deliberately not ``runtime_checkable`` -- an ``isinstance`` check against a
-    protocol only asks whether the attributes exist, and it reports ``False`` for
-    any implementation whose ``metadata`` raises.
+    Two methods, because an ingest embeds thousands of texts and cares about
+    throughput, while a search embeds one and a person is waiting for it. Not
+    ``runtime_checkable``: an ``isinstance`` check against a protocol only asks
+    whether the attributes exist, and reports ``False`` for any implementation
+    whose ``metadata`` raises.
     """
 
     metadata: EmbeddingMetadata
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed chunks on the way in: one vector per text, in the order given."""
+        """Embed chunks on the way in.
+
+        Args:
+            texts: The texts to embed.
+
+        Returns:
+            One vector per text, in the order given.
+        """
 
     def embed_query(self, text: str) -> list[float]:
-        """Embed one question. One round trip, on every search."""
+        """Embed one question. One round trip, on every search.
+
+        Args:
+            text: The question.
+
+        Returns:
+            The question's vector.
+        """
 
 
 # --------------------------------------------------------------------------- #
@@ -95,11 +105,22 @@ def take_in_order(
 ) -> list[list[float]]:
     """Put a response back into input order, refusing anything that does not fit.
 
-    Each item carries its own ``index``, so vectors are placed by that rather than
-    by list position, and the response is refused unless every position was filled
-    exactly once. Zipped blindly instead, a wrong count or a repeated index still
-    yields real vectors of the right width -- so the write succeeds and the wrong
-    rows come back at search time.
+    Each item carries its own ``index``, so vectors are placed by it, not by list
+    position, and the response is refused unless every position is filled exactly
+    once. A wrong count or a repeated index still yields real vectors of the right
+    width, so without this the write would succeed and the wrong rows would come
+    back at search time.
+
+    Args:
+        indexed_vectors: ``(index, vector)`` pairs, as the response listed them.
+        expected: How many texts were sent.
+
+    Returns:
+        The vectors in input order.
+
+    Raises:
+        MisalignedResponseError: If the count is wrong, or an index is out of
+            range or appears twice.
     """
     if len(indexed_vectors) != expected:
         raise MisalignedResponseError(
@@ -127,8 +148,15 @@ def take_in_order(
 def check_width(vectors: list[list[float]], dimension: int) -> None:
     """Raise unless every vector is the configured width.
 
-    One ``len()`` per vector, and the only thing standing between a model changing
-    underneath a running ingest and a table full of rows nobody can compare.
+    Catches a model that changes during a running ingest, before the table fills
+    with vectors that cannot be compared.
+
+    Args:
+        vectors: The vectors to check.
+        dimension: The configured width.
+
+    Raises:
+        DimensionMismatchError: If any vector has a different width.
     """
     for position, vector in enumerate(vectors):
         if len(vector) != dimension:
@@ -141,11 +169,18 @@ def check_width(vectors: list[list[float]], dimension: int) -> None:
 def verify_dimension(embedder: Embedder, probe: str = "dimension check") -> None:
     """Embed one short string at startup and confirm the width. Refuse if not.
 
-    pgvector fixes the column width at ``CREATE TABLE``, so a disagreement found
-    at write time is found halfway through filling a table that can no longer hold
-    what is being written. The model *name* is deliberately not checked: several
-    aliases share one model, so a response routinely names a different one and
-    comparing them would fail constantly while detecting nothing.
+    pgvector fixes the column width at ``CREATE TABLE``, so a mismatch found at
+    write time is found halfway through filling a table that cannot hold the
+    vectors. The model name is not checked: several aliases share one model, so a
+    response often names a different one.
+
+    Args:
+        embedder: The embedder to check.
+        probe: The text embedded for the check.
+
+    Raises:
+        DimensionMismatchError: If the vector's width differs from
+            ``embedder.metadata.dimension``.
     """
     vector = embedder.embed_query(probe)
     if len(vector) != embedder.metadata.dimension:

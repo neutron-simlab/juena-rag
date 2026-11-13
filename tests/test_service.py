@@ -2,7 +2,7 @@
 
 Runs the real app against the real store, in-process, on the same throwaway
 schema the store tests use -- so a handler that stops matching its `Store` method
-fails here rather than at cutover. Skips with the rest when there is no database.
+fails here rather than in a deployment. Skips with the rest when there is no database.
 """
 
 import anyio
@@ -199,7 +199,7 @@ def test_every_endpoint_is_under_the_version_prefix(store):
     ],
 )
 def test_there_is_no_way_to_write_over_http(client, method, path):
-    """Plan 02's S2: the five write methods have no endpoint, deliberately."""
+    """The five write methods of `Store` have no endpoint, on purpose."""
     response = client.request(method, path, json={})
 
     # 405 where the path exists for reading, 404 where it does not. Both are
@@ -208,7 +208,7 @@ def test_there_is_no_way_to_write_over_http(client, method, path):
 
 
 def test_the_threadpool_is_sized_by_configuration(store):
-    """S6's second number, which is set inside the event loop or not at all."""
+    """The thread-pool size, which can only be set inside the running event loop."""
     app = create_app(store, max_concurrency=7)
 
     async def start_it_and_look() -> float:

@@ -7,9 +7,12 @@ from dataclasses import dataclass
 class Definition:
     """One named region of a file: a function, a subroutine, a section.
 
-    ``path`` is the chain of enclosing names ending in this one, so a method
-    inside a class is ``("FormFactor", "sphere")`` and a subsection inside a
-    chapter is ``("Data Treatment", "Fitting")``.
+    Attributes:
+        start_line: The first line, counting from 1.
+        end_line: The last line, included.
+        path: The chain of enclosing names ending in this one, so a method
+            inside a class is ``("FormFactor", "sphere")`` and a subsection
+            inside a chapter is ``("Data Treatment", "Fitting")``.
     """
 
     start_line: int
@@ -30,12 +33,19 @@ class Definition:
 def enclosing(
     definitions: list[Definition], start_line: int, end_line: int | None = None
 ) -> Definition | None:
-    """The innermost definition containing the *whole* range, or ``None``.
+    """Find the innermost definition that contains a whole line range.
 
-    Containing the whole range is the point. A chunk running across two
-    subroutines sits inside neither, and naming the one it happens to start in is
-    a citation that points somewhere the reader will not find what was quoted --
-    so the honest answer is their shared parent, or nothing.
+    A chunk running across two subroutines sits inside neither; naming the one
+    it starts in would send the reader to a place that does not hold the quoted
+    text. So the answer is their shared parent, or nothing.
+
+    Args:
+        definitions: An outline, in source order.
+        start_line: The range's first line.
+        end_line: The range's last line. None means the range is one line.
+
+    Returns:
+        The innermost definition containing the whole range, or None.
     """
     if end_line is None:
         end_line = start_line

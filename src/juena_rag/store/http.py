@@ -2,8 +2,7 @@
 
 An application that should not open the database gets identical behaviour from
 ``HttpStore(url=…)`` as from ``Store(dsn=…)``: same method names, same argument
-names, same return shapes. Moving between them is one constructor line, which is
-what makes the chatbot's cutover cheap.
+names, same return shapes. Moving between them is one constructor line.
 """
 
 from collections.abc import Sequence
@@ -31,9 +30,9 @@ DEFAULT_TIMEOUT = 30.0
 class HttpStore:
     """The read half of :class:`~juena_rag.store.pgvector.Store`, over HTTP.
 
-    Holds no embedder and no database driver: the service does both, which is most
-    of the point of it. It has no ``k``/``n`` defaults of its own either -- left
-    unset, whatever the service is configured with applies.
+    Holds no embedder and no database driver: the service does both. It has no
+    ``k``/``n`` defaults of its own either -- left unset, whatever the service is
+    configured with applies.
     """
 
     def __init__(
@@ -43,11 +42,16 @@ class HttpStore:
         timeout: float = DEFAULT_TIMEOUT,
         client: Any | None = None,
     ) -> None:
-        """
-        :param url: where the service is -- ``https://juena-rag.jcns.internal``.
-        :param client: an already-built ``httpx.Client``, for tests. Every request
-            goes to an absolute URL built from ``url``, so an injected client needs
-            no ``base_url`` of its own.
+        """Initialize the client.
+
+        Args:
+            url: Where the service is, such as
+                ``https://juena-rag.jcns.internal``.
+            timeout: Seconds to wait on the service.
+            client: An already-built ``httpx.Client``, for tests. Every request
+                goes to an absolute URL built from ``url``, so an injected client
+                needs no ``base_url`` of its own. None means build one with
+                ``timeout``.
         """
         self._url = url.rstrip("/")
         self._client = client if client is not None else httpx.Client(timeout=timeout)
@@ -85,8 +89,26 @@ class HttpStore:
 
         The filters are checked here before the request is sent, because
         :class:`~juena_rag.schema.boundary.SearchRequest` is the same object the
-        service validates -- a typo fails in the caller's own traceback. With
-        ``rerank``, the service's reranking model re-orders the closest candidates.
+        service validates -- a typo fails in the caller's own traceback.
+
+        Args:
+            query: The question.
+            sources: Only these source ids. None means all.
+            categories: Only these categories. None means all.
+            chunk_kinds: Only these chunk kinds. None means all.
+            k: How many candidates the index retrieves. None means the
+                service's default.
+            n: How many hits to return. None means the service's default.
+            rerank: Have the service's reranking model re-order the closest
+                candidates first.
+
+        Returns:
+            The hits and the documents they came from.
+
+        Raises:
+            ValueError: If an argument is invalid, here or at the service.
+            StoreError: If the service cannot be reached or answers with an
+                error.
         """
         request = SearchRequest(
             query=query,
@@ -102,7 +124,15 @@ class HttpStore:
         )
 
     def list_sources(self) -> list[SourceRow]:
-        """The catalogue, newest first."""
+        """List the catalogue.
+
+        Returns:
+            Every source, newest first.
+
+        Raises:
+            StoreError: If the service cannot be reached or answers with an
+                error.
+        """
         return [SourceRow.model_validate(row) for row in self._read("GET", "/sources")]
 
     def get_structure(
@@ -111,11 +141,23 @@ class HttpStore:
         *,
         revision: str | None = None,
     ) -> SourceRow | None:
-        """One document, if it is still at the revision asked for.
+        """Look up one document, if it is still at the revision asked for.
 
-        **The one place the two stores differ.** ``revision`` is required here
-        because the endpoint requires it (plan 02's S3), and refusing before the
-        round trip says so more clearly than a `400` coming back would.
+        The one place the two stores differ: ``revision`` is required here
+        because the endpoint requires it, and refusing before the round trip
+        says so more clearly than a `400` coming back would.
+
+        Args:
+            source_id: The source's id.
+            revision: The revision the caller holds.
+
+        Returns:
+            The source's row, or None if it is absent or has moved on.
+
+        Raises:
+            ValueError: If ``revision`` is None.
+            StoreError: If the service cannot be reached or answers with an
+                error.
         """
         if revision is None:
             raise ValueError(
@@ -137,11 +179,23 @@ class HttpStore:
         return SourceRow.model_validate(_checked(response))
 
     def status(self) -> StoreStatus:
-        """What is stored. Scans the chunks table server-side, so not a probe."""
+        """Report what is stored. Scans the chunks table server-side, so not a probe.
+
+        Returns:
+            The counts and the embedding models in use.
+
+        Raises:
+            StoreError: If the service cannot be reached or answers with an
+                error.
+        """
         return StoreStatus.model_validate(self._read("GET", "/status"))
 
     def ping(self) -> None:
-        """Reach the service, which reaches the database. Raises if either cannot."""
+        """Reach the service, which reaches the database.
+
+        Raises:
+            StoreError: If the service cannot be reached or reports a failure.
+        """
         self._read("GET", "/health")
 
     # ----------------------------------------------------------------- #

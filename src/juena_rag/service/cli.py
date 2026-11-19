@@ -1,7 +1,9 @@
-"""The ``juena-rag`` command: ``serve`` the HTTP service, or ``ingest-repo``.
+"""The ``juena-rag`` command: ``serve`` the HTTP service, or ingest something.
 
     juena-rag serve --host 0.0.0.0
     juena-rag ingest-repo sampledb --config repositories.yaml --dry-run
+    juena-rag ingest-docling --raw-chunks ... --docling-json ... --ref-chapter 5a
+    juena-rag ingest-docling-csv use-cases/lecture-notes/books.csv
 
 Nothing heavy is imported at the top, so ``juena-rag --help`` still answers on the
 base install where neither FastAPI nor psycopg is present. Neither subcommand
@@ -89,10 +91,76 @@ def main(argv: list[str] | None = None) -> int:
         help="only the first N files, for a cheap smoke test against the real model",
     )
 
+    # Shared by both docling subcommands.
+    docling_options = argparse.ArgumentParser(add_help=False)
+    docling_options.add_argument(
+        "--no-contextualize",
+        action="store_false",
+        dest="contextualize",
+        help="embed each chunk's bare text instead of its heading-prefixed "
+        "contextualized_text",
+    )
+    docling_options.add_argument(
+        "--force",
+        action="store_true",
+        help="re-ingest even when the stored revision already matches",
+    )
+
+    ingest_docling = subcommands.add_parser(
+        "ingest-docling",
+        parents=[docling_options],
+        help="store a rag-lab HybridChunker export (*_raw_chunks.json) as one book",
+    )
+    ingest_docling.add_argument(
+        "--raw-chunks",
+        type=Path,
+        required=True,
+        help="the *_raw_chunks.json written by rag-lab's hybrid_chunker.py; its "
+        "records' `source` becomes the source's id",
+    )
+    ingest_docling.add_argument(
+        "--docling-json",
+        type=Path,
+        required=True,
+        help="the docling JSON those chunks were made from; the chapter's title, "
+        "authors and PDF are read from it",
+    )
+    ingest_docling.add_argument(
+        "--title", help="the book's title, even when the export is one chapter"
+    )
+    ingest_docling.add_argument("--isbn", help="ISBN-13, digits only")
+    ingest_docling.add_argument(
+        "--ref-chapter", help="how the chapter is cited, e.g. 5a, Appendix A"
+    )
+    ingest_docling.add_argument(
+        "--editor",
+        dest="editors",
+        action="append",
+        help="for an edited volume; repeat for more than one",
+    )
+    ingest_docling.add_argument("--year", type=int)
+    ingest_docling.add_argument("--publisher")
+
+    ingest_docling_csv = subcommands.add_parser(
+        "ingest-docling-csv",
+        parents=[docling_options],
+        help="store every HybridChunker export a CSV lists, one book source per row",
+    )
+    ingest_docling_csv.add_argument(
+        "manifest",
+        type=Path,
+        help="the CSV: raw_chunks, docling_json, title, isbn, ref_chapter, "
+        "editors (;-separated), year, publisher",
+    )
+
     arguments = parser.parse_args(argv)
 
     if arguments.command == "ingest-repo":
         return _ingest(arguments)
+    if arguments.command == "ingest-docling":
+        return _ingest_docling(arguments)
+    if arguments.command == "ingest-docling-csv":
+        return _ingest_docling_csv(arguments)
     return _serve(
         host=arguments.host, port=arguments.port, log_level=arguments.log_level
     )
@@ -122,6 +190,61 @@ def _ingest(arguments: argparse.Namespace) -> int:
             limit=arguments.limit,
         )
     except ValueError as error:
+        print(error, file=sys.stderr)
+        return 2
+
+
+def _ingest_docling(arguments: argparse.Namespace) -> int:
+    """Run one docling ingest, turning a missing extra or a bad batch into a sentence."""
+    try:
+        from juena_rag.ingest.docling.manifest import BOOK_INPUTS
+        from juena_rag.ingest.docling.pipeline import ingest_docling_export
+    except ImportError as error:
+        print(
+            f"ingestion is not installed: {error}\n  pip install 'juena-rag[ingest]'",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Only the flags given, so an unset one keeps BookChunk's own default.
+    book = {
+        field: getattr(arguments, field)
+        for field in BOOK_INPUTS
+        if getattr(arguments, field) is not None
+    }
+
+    try:
+        return ingest_docling_export(
+            arguments.raw_chunks,
+            arguments.docling_json,
+            title=arguments.title,
+            book=book,
+            contextualize=arguments.contextualize,
+            force=arguments.force,
+        )
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 2
+
+
+def _ingest_docling_csv(arguments: argparse.Namespace) -> int:
+    """Run a docling ingest per CSV row, turning a bad CSV into a sentence."""
+    try:
+        from juena_rag.ingest.docling.pipeline import ingest_docling_manifest
+    except ImportError as error:
+        print(
+            f"ingestion is not installed: {error}\n  pip install 'juena-rag[ingest]'",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        return ingest_docling_manifest(
+            arguments.manifest,
+            contextualize=arguments.contextualize,
+            force=arguments.force,
+        )
+    except (OSError, ValueError) as error:
         print(error, file=sys.stderr)
         return 2
 
